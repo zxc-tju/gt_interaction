@@ -4,6 +4,7 @@ import numpy as np
 from agent import Agent
 from tools.utility import draw_rectangle
 import matplotlib.pyplot as plt
+from NDS_analysis import analyze_ipv_in_nds
 
 
 class Scenario:
@@ -16,11 +17,11 @@ class Scenario:
 
 
 class Simulator:
-    def __init__(self):
+    def __init__(self, case_id=None):
         self.semantic_result = None
         self.output_directory = None
         self.tag = None
-        self.case_id = None
+        self.case_id = case_id
         self.scenario = None
         self.agent_lt = None
         self.agent_gs = None
@@ -184,7 +185,32 @@ class Simulator:
         plt.show()
 
 
-def main():
+    def read_nds_scenario(self):
+        cross_id, data_cross, _ = analyze_ipv_in_nds(self.case_id)
+        # data_cross:
+        # 0-ipv_lt | ipv_lt_error | lt_px | lt_py  | lt_vx  | lt_vy  | lt_heading  |...
+        # 7-ipv_gs | ipv_gs_error | gs_px | gs_py  | gs_vx  | gs_vy  | gs_heading  |
+
+        if cross_id == -1:
+            return None
+        else:
+            init_position_lt = [data_cross[0, 2], data_cross[0, 3]]
+            init_velocity_lt = [data_cross[0, 4], data_cross[0, 5]]
+            init_heading_lt = data_cross[0, 6]
+            ipv_lt = np.mean(data_cross[4:, 0])
+            init_position_gs = [data_cross[0, 9], data_cross[0, 10]]
+            init_velocity_gs = [data_cross[0, 11], data_cross[0, 12]]
+            init_heading_gs = data_cross[0, 13]
+            ipv_gs = np.mean(data_cross[4:, 7])
+            self.lt_actual_trj = data_cross[:, 2:4]
+            self.gs_actual_trj = data_cross[:, 9:11]
+
+            return Scenario([init_position_lt, init_position_gs],
+                            [init_velocity_lt, init_velocity_gs],
+                            [init_heading_lt, init_heading_gs],
+                            [ipv_lt, ipv_gs])
+
+def main1():
     """
     === main for simulating unprotected left-turning ===
     1. set initial motion state before the simulation
@@ -221,6 +247,23 @@ def main():
     simu.visualize()
 
 
+def main2():
+    tag = 'nds-simu'
+    simu = Simulator(case_id=0)
+    simu_scenario = simu.read_nds_scenario()
+    if simu_scenario:
+        simu.initialize(simu_scenario, tag)
+        simu.agent_gs.target = 'gs_nds'
+        simu.agent_lt.target = 'lt_nds'
+        simu.interact(simu_step=30)
+        simu.post_process()
+        simu.visualize()
+
+
 if __name__ == '__main__':
 
-    main()
+    'unprotected left-turn at a T-intersection'
+    # main1()
+
+    'test with nds data from jianhe-xianxia intersection (demo for VTD)'
+    main2()

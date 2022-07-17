@@ -91,7 +91,10 @@ def draw_rectangle(x, y, deg, ax, para_alpha=0.5, para_color='blue'):
     # ax.add_patch(r1)
     ax.add_patch(r2)
 
-    # plt.grid(True)
-    # plt.axis('equal')
-    #
-    # plt.show()
+
+def get_intersection_point(polyline1, polyline2):
+    s1 = LineString(polyline1)
+    s2 = LineString(polyline2)
+
+    inter_point = s1.intersection(s2)
+    return inter_point
