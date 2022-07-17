@@ -16,6 +16,10 @@ WEIGHT_DEVIATION = 0.8
 weight_metric = np.array([WEIGHT_DELAY, WEIGHT_DEVIATION])
 weight_metric = weight_metric / weight_metric.sum()
 
+# weight of interior and group cost
+WEIGHT_INT = 1
+WEIGHT_GRP = 0.4
+
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
 MAX_ACCELERATION = 3.0
@@ -23,10 +27,6 @@ MAX_ACCELERATION = 3.0
 # initial guess on interacting agent's IPV
 INITIAL_IPV_GUESS = 0
 virtual_agent_IPV_range = np.array([-3, -2, -1, 0, 1, 2, 3]) * math.pi / 8
-
-# weight of interior and group cost
-WEIGHT_INT = 1
-WEIGHT_GRP = 0.3
 
 # likelihood function
 sigma = 0.02
@@ -67,7 +67,7 @@ class Agent:
 
         p, v, h = self_info[0:3]
         init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
-        fun = utility_IBR(self_info, inter_track)  # objective function
+        fun = utility_ibr(self_info, inter_track)  # objective function
         u0 = np.concatenate([1 * np.zeros([(track_len - 1), 1]),
                              np.zeros([(track_len - 1), 1])])  # initialize solution
         bds_acc = [(-MAX_ACCELERATION, MAX_ACCELERATION) for i in range(track_len - 1)]
@@ -169,7 +169,7 @@ class Agent:
                 "====end of parallel game method===="
 
 
-def utility_IBR(self_info, track_inter):
+def utility_ibr(self_info, track_inter):
     def fun(u):
         """
         Calculate the utility from the perspective of "self" agent
@@ -196,7 +196,10 @@ def utility_IBR(self_info, track_inter):
 
 def cal_interior_cost(track, target):
 
-    cv, s = get_central_vertices(target, None)
+    if target in {'gs_nds', 'lt_nds'}:
+        cv, s = get_central_vertices(target, track[0, :])
+    else:
+        cv, s = get_central_vertices(target, None)
 
     # initialize an array to store distance from each point in the track to cv
     dis2cv = np.zeros([np.size(track, 0), 1])
@@ -212,11 +215,6 @@ def cal_interior_cost(track, target):
     "2. cost of lane deviation"
     cost_mean_deviation = max(0.2, dis2cv.mean())
     # print('cost of lane deviation:', cost_mean_deviation)
-
-    # "3. cost of overspeed"
-    # dis = np.linalg.norm(track[1:, :] - track[0:-1, :], axis=1)
-    # vel = (dis[1:] - dis[0:-1]) / dt
-    # cost_overspeed = max(max(vel) - MAX_SPEED, 0)
 
     cost_metric = np.array([cost_travel_distance, cost_mean_deviation])
 
