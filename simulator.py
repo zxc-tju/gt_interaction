@@ -1,3 +1,6 @@
+"""
+Interaction simulator
+"""
 import copy
 import math
 import numpy as np
@@ -42,6 +45,15 @@ class Simulator:
         self.tag = case_tag
 
     def interact(self, simu_step=30, break_when_finish=False):
+        """
+        Simulate the given scenario step by step
+
+        Parameters
+        ----------
+        simu_step: number of simulation steps
+        break_when_finish: (if set to be True) break the simulation when any agent crossed the conflict point
+
+        """
         self.num_step = simu_step
         iter_limit = 10
         for t in range(self.num_step):
@@ -82,10 +94,9 @@ class Simulator:
 
     def post_process(self):
         """
-        identify semantic interaction results:
-        1. crashed or not
-        2. the letf-turn vehicle yield or not
-        :return:
+        Identify semantic interaction results after simulation:
+        1. crashed or not (not critical judgement)
+        2. the left-turn vehicle yield or not
         """
         track_lt = self.agent_lt.observed_trajectory
         track_gs = self.agent_gs.observed_trajectory
@@ -134,7 +145,7 @@ class Simulator:
         plt.xlim([-9.1, 24.9])
         plt.ylim([-13, 8])
 
-        "====data abstraction===="
+        "---- data abstraction ----"
         # lt track (observed and planned)
         lt_ob_trj = self.agent_lt.observed_trajectory[:, 0:2]
         lt_heading = self.agent_lt.observed_trajectory[:, 4] / math.pi * 180
@@ -144,7 +155,8 @@ class Simulator:
         gs_heading = self.agent_gs.observed_trajectory[:, 4] / math.pi * 180
 
         num_frame = len(lt_ob_trj)
-        "====show plans at each time step===="
+
+        "---- show plans at each time step ----"
         # # central vertices
         # cv_it, _ = get_central_vertices('lt')
         # cv_gs, _ = get_central_vertices('gs')
@@ -172,52 +184,55 @@ class Simulator:
                      color='black',
                      alpha=0.2)
 
-        "====show velocity===="
-        plt.figure(2)
-        x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
-        vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
-        vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
-        plt.plot(x_range, vel_norm_lt, color='red', label='LT velocity')
-        plt.plot(x_range, vel_norm_gs, color='blue', label='FC velocity')
-        plt.legend()
-
+        "---- show velocity ----"
+        # plt.figure(2)
+        # x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
+        # vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
+        # vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
+        # plt.plot(x_range, vel_norm_lt, color='red', label='LT velocity')
+        # plt.plot(x_range, vel_norm_gs, color='blue', label='FC velocity')
+        # plt.legend()
+        #
         plt.show()
 
 
 def main():
     """
     === main for simulating unprotected left-turning ===
-    1. set initial motion state before the simulation
-    2. change controller type by manually setting controller_type_xx as 'gt' or 'opt'
+    1. Set initial motion state before the simulation
+    2. Change controller type by manually setting controller_type_xx as 'gt' or 'opt'
         * 'gt' is the game-theoretic planner work by solving IBR process
         * 'opt' is the optimal controller work by solving single optimization
     """
 
-    tag = 'test'  # for saving data
-    # initial state of the left-turn vehicle
+    tag = 'test'  # tag for data saving
+
+    '---- set initial state of the left-turn vehicle ----'
     init_position_lt = [11, -5.8]
     init_velocity_lt = [1.5, 0.3]
     init_heading_lt = math.pi / 4
     ipv_lt = 0
     controller_type_lt = 'opt'
 
-    # initial state of the go-straight vehicle
+    '---- set initial state of the go-straight vehicle ----'
     init_position_gs = [22, -2]
     init_velocity_gs = [-1.5, 0]
     init_heading_gs = math.pi
     ipv_gs = math.pi/8
     controller_type_gs = 'opt'
 
+    '---- generate scenario ----'
     simu_scenario = Scenario([init_position_lt, init_position_gs],
                              [init_velocity_lt, init_velocity_gs],
                              [init_heading_lt, init_heading_gs],
                              [ipv_lt, ipv_gs],
                              [controller_type_lt, controller_type_gs])
 
-    simu = Simulator()
-    simu.initialize(simu_scenario, tag)
-    simu.interact(simu_step=30)
-    simu.post_process()
+    '---- simulation process ----'
+    simu = Simulator()  # generate a simulator
+    simu.initialize(simu_scenario, tag)  # apply scenario under test
+    simu.interact(simu_step=10)  # set simulation steps and start
+    simu.post_process()  # find semantic results (LT vehicle yield or rush)
     simu.visualize()
 
 

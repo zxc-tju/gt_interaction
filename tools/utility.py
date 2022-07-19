@@ -55,7 +55,6 @@ def kinematic_model(u, init_state, TRACK_LEN, dt):
     r_len = 0.8
     f_len = 1
     x, y, vx, vy, h = init_state
-    # track = [init_state]
     psi = h
     track = [[x, y, vx, vy, h]]
     v_temp = np.sqrt(vx ** 2 + vy ** 2)

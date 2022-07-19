@@ -1,4 +1,6 @@
-"""create agents for simulation"""
+"""
+Agents for interaction simulations
+"""
 import numpy as np
 import math
 from scipy.optimize import minimize
@@ -6,8 +8,8 @@ from tools.utility import get_central_vertices, kinematic_model
 import copy
 
 # simulation setting
-dt = 0.1
-TRACK_LEN = 10
+dt = 0.2
+TRACK_LEN = 6
 MAX_DELTA_UT = 1e-4
 
 # weights for calculate interior cost
@@ -58,6 +60,9 @@ class Agent:
         self.virtual_track_collection = []
 
     def solve_optimization(self, inter_track):
+        """
+        Solve optimization to output best solution given interacting counterpart's track
+        """
         track_len = np.size(inter_track, 0)
         self_info = [self.position,
                      self.velocity,
@@ -67,7 +72,7 @@ class Agent:
 
         p, v, h = self_info[0:3]
         init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
-        fun = utility_IBR(self_info, inter_track)  # objective function
+        fun = utility_ibr(self_info, inter_track)  # objective function
         u0 = np.concatenate([1 * np.zeros([(track_len - 1), 1]),
                              np.zeros([(track_len - 1), 1])])  # initialize solution
         bds_acc = [(-MAX_ACCELERATION, MAX_ACCELERATION) for i in range(track_len - 1)]
@@ -77,13 +82,13 @@ class Agent:
         res = minimize(fun, u0, bounds=bds, method='SLSQP')
         x = np.reshape(res.x, [2, track_len - 1]).T
         self.action = x
-        self.trj_solution = kinematic_model(x, init_state_4_kine, track_len, dt)
+        self.trj_solution = kinematic_model(x, init_state_4_kine, track_len, dt)  # get trajectory
         return self.trj_solution
 
     def ibr_interact_with_virtual_agents(self, agent_inter, iter_limit=10):
         """
-        generate copy of the interacting agent and interact with them
-        :param iter_limit:
+        Generate copy of the interacting agent and interact with them
+        :param iter_limit: max iteration number
         :param agent_inter: Agent:interacting agent
         :return:
         """
@@ -108,8 +113,7 @@ class Agent:
 
     def ibr_interact(self, iter_limit=10):
         """
-        interact with the estimated interacting agent. this agent's IPV is continuously updated.
-        :return:
+        Interact with the estimated interacting agent. This agent's IPV is continuously updated.
         """
         count_iter = 0  # count number of iteration
         last_self_track = np.zeros_like(self.trj_solution)  # initialize a track reservation
@@ -169,7 +173,7 @@ class Agent:
                 "====end of parallel game method===="
 
 
-def utility_IBR(self_info, track_inter):
+def utility_ibr(self_info, track_inter):
     def fun(u):
         """
         Calculate the utility from the perspective of "self" agent
@@ -195,6 +199,9 @@ def utility_IBR(self_info, track_inter):
 
 
 def cal_interior_cost(track, target):
+    """
+    Cost that related to a single agent
+    """
 
     cv, s = get_central_vertices(target, None)
 
@@ -213,11 +220,6 @@ def cal_interior_cost(track, target):
     cost_mean_deviation = max(0.2, dis2cv.mean())
     # print('cost of lane deviation:', cost_mean_deviation)
 
-    # "3. cost of overspeed"
-    # dis = np.linalg.norm(track[1:, :] - track[0:-1, :], axis=1)
-    # vel = (dis[1:] - dis[0:-1]) / dt
-    # cost_overspeed = max(max(vel) - MAX_SPEED, 0)
-
     cost_metric = np.array([cost_travel_distance, cost_mean_deviation])
 
     "overall cost"
@@ -227,6 +229,9 @@ def cal_interior_cost(track, target):
 
 
 def cal_group_cost(track_packed):
+    """
+    Cost that related to both two interacting agents
+    """
     track_self, track_inter = track_packed
     pos_rel = track_inter - track_self
     dis_rel = np.linalg.norm(pos_rel, axis=1)
@@ -250,44 +255,50 @@ def cal_group_cost(track_packed):
     return cost_group * WEIGHT_GRP
 
 
-def cal_reliability(inter_track, act_trck, vir_trck_coll, target):
+def cal_reliability(inter_track, act_track, vir_track_coll, target):
+    """
+    Calculate the reliability of a certain virtual agent by comparing observed and simulated tracks of the under
+    estimating agent (or the cost preference thereof)
+
+    Parameters
+    ----------
+    inter_track: (only used when calculate with cost preference) track of the interacting counterpart
+    act_track: observed track of the under estimating agent
+    vir_track_coll: collection of the track conducted by simulated virtual agents
+    target: task of the under estimating agent (left-turn or go-straight)
+
     """
 
-    :param target:
-    :param inter_track:
-    :param act_trck: actual_track
-    :param vir_trck_coll: virtual_track_collection
-    :return:
-    """
-    candidates_num = len(vir_trck_coll)
+    candidates_num = len(vir_track_coll)
     var = np.zeros(candidates_num)
     interior_cost_vir = np.zeros(candidates_num)
     group_cost_vir = np.zeros(candidates_num)
     delta_pref = np.zeros(candidates_num)
     cost_preference_vir = np.zeros(candidates_num)
+
     if np.size(inter_track) == 0:
         # calculate with trj similarity
         for i in range(candidates_num):
-            virtual_track = vir_trck_coll[i]
-            rel_dis = np.linalg.norm(virtual_track - act_trck, axis=1)  # distance vector
+            virtual_track = vir_track_coll[i]
+            rel_dis = np.linalg.norm(virtual_track - act_track, axis=1)  # distance vector
             var[i] = np.power(
                 np.prod(
                     (1 / sigma / np.sqrt(2 * math.pi))
                     * np.exp(- rel_dis ** 2 / (2 * sigma ** 2))
                 )
-                , 1 / np.size(act_trck, 0))
+                , 1 / np.size(act_track, 0))
 
             if var[i] < 0:
                 var[i] = 0
 
     else:
         # calculate with cost preference similarity
-        interior_cost_observed = cal_interior_cost(act_trck, target)
-        group_cost_observed = cal_group_cost([act_trck, inter_track])
+        interior_cost_observed = cal_interior_cost(act_track, target)
+        group_cost_observed = cal_group_cost([act_track, inter_track])
         cost_preference_observed = math.atan(group_cost_observed / interior_cost_observed)
 
         for i in range(candidates_num):
-            virtual_track = vir_trck_coll[i]
+            virtual_track = vir_track_coll[i]
             interior_cost_vir[i] = cal_interior_cost(virtual_track, target)
             group_cost_vir[i] = cal_group_cost([virtual_track, inter_track])
             cost_preference_vir[i] = math.atan(group_cost_vir[i] / interior_cost_vir[i])
