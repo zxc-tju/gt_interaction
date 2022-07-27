@@ -171,6 +171,27 @@ class Simulator:
 
         num_frame = len(lt_ob_trj)
 
+        "---- show plans at each time step ----"
+        # # central vertices
+        # cv_it, _ = get_central_vertices('lt')
+        # cv_gs, _ = get_central_vertices('gs')
+        # ax1.plot(cv_it[:, 0], cv_it[:, 1], 'r-')
+        # ax1.plot(cv_gs[:, 0], cv_gs[:, 1], 'b-')
+
+        # position at each time step
+        for t in range(num_frame):
+            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_heading[t], ax,
+                           para_alpha=(t + 1) / num_frame, para_color='#0E76CF')
+            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_heading[t], ax,
+                           para_alpha=(t + 1) / num_frame, para_color='#7030A0')
+
+        # full tracks at each time step
+        for t in range(self.num_step):
+            lt_track = self.agent_lt.trj_solution_collection[t]
+            plt.plot(lt_track[:, 0], lt_track[:, 1], '--', color='black')
+            gs_track = self.agent_gs.trj_solution_collection[t]
+            plt.plot(gs_track[:, 0], gs_track[:, 1], '--', color='black')
+
         "====show trajectories===="
         plt.plot(cv_it[:, 0], cv_it[:, 1], 'r-')
         plt.plot(cv_gs[:, 0], cv_gs[:, 1], 'b-')
@@ -250,6 +271,7 @@ class Simulator:
 
 
 def main1():
+
     """
     === main for simulating unprotected left-turning ===
     1. Set initial motion state before the simulation
@@ -281,6 +303,7 @@ def main1():
                              [ipv_lt, ipv_gs],
                              [controller_type_lt, controller_type_gs])
 
+
     simu = Simulator()
     simu.initialize(simu_scenario, tag)
     simu.interact(simu_step=30)
@@ -301,6 +324,7 @@ def main2():
         simu.interact(simu_step=10)
         simu.post_process()
         simu.visualize(simu_type='nds')
+
 
 
 if __name__ == '__main__':
