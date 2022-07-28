@@ -173,6 +173,32 @@ class Agent:
                 self.estimated_inter_agent.ipv_error_collection.append(error)
                 "====end of parallel game method===="
 
+    def estimate_self_ipv_in_nds(self, self_actual_track, inter_track):
+        self_virtual_track_collection = []
+        # ipv_range = np.random.normal(self.ipv, math.pi/6, 6)
+        ipv_range = virtual_agent_IPV_range
+        for ipv_temp in ipv_range:
+            agent_self_temp = copy.deepcopy(self)
+            agent_self_temp.ipv = ipv_temp
+            # generate track with varied ipv
+            virtual_track_temp = agent_self_temp.solve_optimization(inter_track)
+            # save track into a collection
+            self.virtual_track_collection.append(virtual_track_temp[:, 0:2])
+
+        # calculate reliability of each track
+        ipv_weight = cal_reliability([],
+                                     self_actual_track,
+                                     self.virtual_track_collection,
+                                     self.target)
+
+        # weighted sum of all candidates' IPVs
+        self.ipv = sum(ipv_range * ipv_weight)
+        self.ipv_error = 1 - np.sqrt(sum(ipv_weight ** 2))
+
+        # # save updated ipv and estimation error
+        # self.ipv_collection.append(self.ipv)
+        # self.ipv_error_collection.append(self.ipv_error)
+
 
 def utility_ibr(self_info, track_inter):
     def fun(u):

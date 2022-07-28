@@ -5,7 +5,7 @@ import copy
 import math
 import numpy as np
 from agent import Agent
-from tools.utility import draw_rectangle, get_central_vertices
+from tools.utility import draw_rectangle, get_central_vertices, smooth_ployline
 from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
 from NDS_analysis import analyze_ipv_in_nds
@@ -47,12 +47,13 @@ class Simulator:
         self.agent_gs.conl_type = self.scenario.conl_type['gs']
         self.tag = case_tag
 
-    def interact(self, simu_step=30, break_when_finish=False):
+    def interact(self, simu_step=30, make_video=False, break_when_finish=False):
         """
         Simulate the given scenario step by step
 
         Parameters
         ----------
+        make_video
         simu_step: number of simulation steps
         break_when_finish: (if set to be True) break the simulation when any agent crossed the conflict point
 
@@ -129,36 +130,37 @@ class Simulator:
             self.agent_gs.update_state(self.agent_lt)
 
             "==update video=="
-            plt.cla()
-            if self.sim_type == 'simu':
-                img = plt.imread('background_pic/T_intersection.jpg')
-                plt.imshow(img, extent=[-9.1, 24.9, -13, 8])
-                plt.xlim([-9.1, 24.9])
-                plt.ylim([-13, 8])
-                # central vertices
-                cv_it, _ = get_central_vertices('lt')
-                cv_gs, _ = get_central_vertices('gs')
-            elif self.sim_type == 'nds':
-                plt.xlim([-22 - 13, 53 - 13])
-                plt.ylim([-31 - 7.8, 57 - 7.8])
-                img = plt.imread('background_pic/Jianhexianxia-v2.png')
-                plt.imshow(img, extent=[-28-13, 58-13, -42-7.8, 64-7.8])
-                # central vertices
-                lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
-                gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
-                cv_it, _ = get_central_vertices('lt_nds', origin_point=lt_origin_point)
-                cv_gs, _ = get_central_vertices('gs_nds', origin_point=gs_origin_point)
+            if make_video:
+                plt.cla()
+                if self.sim_type == 'simu':
+                    img = plt.imread('background_pic/T_intersection.jpg')
+                    plt.imshow(img, extent=[-9.1, 24.9, -13, 8])
+                    plt.xlim([-9.1, 24.9])
+                    plt.ylim([-13, 8])
+                    # central vertices
+                    cv_it, _ = get_central_vertices('lt')
+                    cv_gs, _ = get_central_vertices('gs')
+                elif self.sim_type == 'nds':
+                    plt.xlim([-22 - 13, 53 - 13])
+                    plt.ylim([-31 - 7.8, 57 - 7.8])
+                    img = plt.imread('background_pic/Jianhexianxia-v2.png')
+                    plt.imshow(img, extent=[-28-13, 58-13, -42-7.8, 64-7.8])
+                    # central vertices
+                    lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
+                    gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
+                    cv_it, _ = get_central_vertices('lt_nds', origin_point=lt_origin_point)
+                    cv_gs, _ = get_central_vertices('gs_nds', origin_point=gs_origin_point)
 
-                draw_rectangle(self.agent_lt.position[0], self.agent_lt.position[1],
-                               self.agent_lt.heading / math.pi * 180, ax,
-                               para_alpha=1, para_color='#0E76CF')
-                draw_rectangle(self.agent_gs.position[0], self.agent_gs.position[1],
-                               self.agent_gs.heading / math.pi * 180, ax,
-                               para_alpha=1, para_color='#7030A0')
-            ax.axis('scaled')
-            plt.show()
-            plt.pause(0.1)
-            plt.savefig('figures/' + self.tag + str(t) + '.png')
+                    draw_rectangle(self.agent_lt.position[0], self.agent_lt.position[1],
+                                   self.agent_lt.heading / math.pi * 180, ax,
+                                   para_alpha=1, para_color='#0E76CF')
+                    draw_rectangle(self.agent_gs.position[0], self.agent_gs.position[1],
+                                   self.agent_gs.heading / math.pi * 180, ax,
+                                   para_alpha=1, para_color='#7030A0')
+                ax.axis('scaled')
+                plt.show()
+                plt.pause(0.1)
+                plt.savefig('figures/' + self.tag + str(t) + '.png')
 
             if break_when_finish:
                 if self.agent_gs.observed_trajectory[-1, 0] < self.agent_lt.observed_trajectory[-1, 0] \
@@ -328,6 +330,84 @@ class Simulator:
                             [ipv_lt, ipv_gs],
                             [controller_type_lt, controller_type_gs])
 
+    def ipv_analysis(self):
+        ipv_collection_lt = []
+        ipv_collection_gs = []
+        ipv_error_collection_lt = []
+        ipv_error_collection_gs = []
+        track_lt = self.agent_lt.observed_trajectory
+        track_gs = self.agent_gs.observed_trajectory
+        for t in range(np.size(track_lt, 0) - 6):
+            init_position_lt = track_lt[t, 0:2]
+            init_velocity_lt = track_lt[t, 2:4]
+            init_heading_lt = track_lt[t, 4]
+            agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt_nds')
+            track_lt_temp = track_lt[t:t + 6, 0:2]
+
+            init_position_gs = track_gs[t, 0:2]
+            init_velocity_gs = track_gs[t, 2:4]
+            init_heading_gs = track_gs[t, 4]
+            agent_gs = Agent(init_position_gs, init_velocity_gs, init_heading_gs, 'gs_nds')
+            track_gs_temp = track_gs[t:t + 6, 0:2]
+
+            # estimate ipv
+            agent_lt.estimate_self_ipv_in_nds(track_lt_temp, track_gs_temp)
+            ipv_collection_lt.append(agent_lt.ipv)
+            ipv_error_collection_lt.append(agent_lt.ipv_error)
+
+            agent_gs.estimate_self_ipv_in_nds(track_gs_temp, track_lt_temp)
+            ipv_collection_gs.append(agent_gs.ipv)
+            ipv_error_collection_gs.append(agent_gs.ipv_error)
+
+        # figure preparation
+        x_range = np.array(range(len(ipv_collection_lt)))
+        ipv_collection_lt = np.array(ipv_collection_lt)
+        ipv_collection_gs = np.array(ipv_collection_gs)
+        ipv_error_collection_lt = np.array(ipv_error_collection_lt)
+        ipv_error_collection_gs = np.array(ipv_error_collection_gs)
+
+        plt.figure()
+        plt.plot(x_range, ipv_collection_lt, color='#0E76CF')
+        plt.fill_between(x_range,
+                         ipv_collection_lt - ipv_error_collection_lt,
+                         ipv_collection_lt + ipv_error_collection_lt,
+                         alpha=0.3,
+                         color='#0E76CF',
+                         label='estimated lt IPV')
+        plt.plot(x_range, ipv_collection_gs, color='#7030A0')
+        plt.fill_between(x_range,
+                         ipv_collection_gs - ipv_error_collection_gs,
+                         ipv_collection_gs + ipv_error_collection_gs,
+                         alpha=0.3,
+                         color='#7030A0',
+                         label='estimated gs IPV')
+
+        # y_lt = np.array(ipv_collection_lt)
+        # point_smoothed_lt, _ = smooth_ployline(np.array([x_range, y_lt]).T)
+        # x_smoothed_lt = point_smoothed_lt[:, 0]
+        # y_lt_smoothed = point_smoothed_lt[:, 1]
+        # y_error_lt = np.array(ipv_error_collection_lt)
+        # error_smoothed_lt, _ = smooth_ployline(np.array([x_range, y_error_lt]).T)
+        # y_error_lt_smoothed = error_smoothed_lt[:, 1]
+        #
+        # y_gs = np.array(ipv_collection_gs)
+        # point_smoothed_gs, _ = smooth_ployline(np.array([x_range, y_gs]).T)
+        # x_smoothed_gs = point_smoothed_gs[:, 0]
+        # y_gs_smoothed = point_smoothed_gs[:, 1]
+        # y_error_gs = np.array(ipv_error_collection_gs)
+        # error_smoothed_gs, _ = smooth_ployline(np.array([x_range, y_error_gs]).T)
+        # y_error_gs_smoothed = error_smoothed_gs[:, 1]
+        #
+        # plt.figure(2)
+        # plt.fill_between(x_smoothed_lt, y_lt_smoothed - y_error_lt_smoothed, y_lt_smoothed + y_error_lt_smoothed,
+        #                  alpha=0.3,
+        #                  color='blue',
+        #                  label='estimated lt IPV')
+        # plt.fill_between(x_smoothed_gs, y_gs_smoothed - y_error_gs_smoothed, y_gs_smoothed + y_error_gs_smoothed,
+        #                  alpha=0.3,
+        #                  color='red',
+        #                  label='estimated gs IPV')
+
 
 def main1():
     """
@@ -399,12 +479,12 @@ def main_replay():
         * set lt agent as the vehicle under test (ipv=pi/4)
     """
 
-    tag = 'replay'
+    tag = 'replay-test'
 
     simu = Simulator(case_id=51)
     simu.sim_type = 'nds'
-    controller_type_lt = 'replay'
-    controller_type_gs = 'replay'
+    controller_type_lt = 'lattice'
+    controller_type_gs = 'gt'
     simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
     if simu_scenario:
         simu.initialize(simu_scenario, tag)
@@ -413,6 +493,7 @@ def main_replay():
         # simu.agent_gs.ipv = math.pi/4
         simu.interact(simu_step=15)
         simu.get_semantic_result()
+        simu.ipv_analysis()
         simu.visualize()
 
 
