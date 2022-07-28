@@ -22,6 +22,7 @@ class Scenario:
 
 class Simulator:
     def __init__(self, case_id=None):
+        self.sim_type = None
         self.semantic_result = None
         self.output_directory = None
         self.tag = None
@@ -58,6 +59,10 @@ class Simulator:
         """
         self.num_step = simu_step
         iter_limit = 10
+
+        plt.ion()
+        _, ax = plt.subplots()
+
         for t in range(self.num_step):
             print('time_step: ', t, '/', self.num_step)
 
@@ -74,9 +79,7 @@ class Simulator:
                 self.agent_lt.opt_plan()
 
             elif self.agent_lt.conl_type in {'replay'}:
-                track_len = np.size(self.agent_lt.trj_solution, 0)
-                # t_end = min(t + track_len, np.size(self.agent_gs.trj_solution, 0))
-                t_end = t + track_len
+                t_end = t + self.agent_lt.track_len
                 self.agent_lt.trj_solution = self.lt_actual_trj[t:t_end, :]
 
             elif self.agent_lt.conl_type in {'lattice'}:
@@ -88,7 +91,7 @@ class Simulator:
                                  'py': self.agent_lt.position[1],
                                  'v': np.linalg.norm(self.agent_lt.velocity)}
                 res = lattice_planning(path_point, obstacle_data, initial_state)
-                self.agent_lt.trj_solution = np.array(res)
+                self.agent_lt.trj_solution = np.array(res[:self.agent_lt.track_len])
 
             "==plan for go straight=="
             if self.agent_gs.conl_type in {'gt'}:
@@ -102,8 +105,7 @@ class Simulator:
                 self.agent_gs.opt_plan()
 
             elif self.agent_gs.conl_type in {'replay'}:
-                track_len = np.size(self.agent_gs.trj_solution, 0)
-                # t_end = min(t + track_len, np.size(self.agent_gs.trj_solution, 0))
+                track_len = self.agent_gs.track_len
                 t_end = t + track_len
                 self.agent_gs.trj_solution = self.gs_actual_trj[t:t_end, :]
 
@@ -116,11 +118,42 @@ class Simulator:
                                  'py': self.agent_gs.position[1],
                                  'v': np.linalg.norm(self.agent_gs.velocity)}
                 res = lattice_planning(path_point, obstacle_data, initial_state)
-                self.agent_gs.trj_solution = np.array(res)
+                self.agent_gs.trj_solution = np.array(res[:self.agent_gs.track_len])
 
             "==update state=="
             self.agent_lt.update_state(self.agent_gs)
             self.agent_gs.update_state(self.agent_lt)
+
+            "==update video=="
+            plt.cla()
+            if self.sim_type == 'simu':
+                img = plt.imread('background_pic/T_intersection.jpg')
+                plt.imshow(img, extent=[-9.1, 24.9, -13, 8])
+                plt.xlim([-9.1, 24.9])
+                plt.ylim([-13, 8])
+                # central vertices
+                cv_it, _ = get_central_vertices('lt')
+                cv_gs, _ = get_central_vertices('gs')
+            elif self.sim_type == 'nds':
+                plt.xlim([-22 - 13, 53 - 13])
+                plt.ylim([-31 - 7.8, 57 - 7.8])
+                img = plt.imread('./background_pic/Jianhexianxia.jpg')
+                plt.imshow(img, extent=[-22 - 13, 53 - 13, -31 - 7.8, 57 - 7.8])
+                # central vertices
+                lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
+                gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
+                cv_it, _ = get_central_vertices('lt_nds', origin_point=lt_origin_point)
+                cv_gs, _ = get_central_vertices('gs_nds', origin_point=gs_origin_point)
+
+                draw_rectangle(self.agent_lt.position[0], self.agent_lt.position[1],
+                               self.agent_lt.heading / math.pi * 180, ax,
+                               para_alpha=1, para_color='#0E76CF')
+                draw_rectangle(self.agent_gs.position[0], self.agent_gs.position[1],
+                               self.agent_gs.heading / math.pi * 180, ax,
+                               para_alpha=1, para_color='#7030A0')
+            ax.axis('scaled')
+            plt.show()
+            plt.pause(0.5)
 
             if break_when_finish:
                 if self.agent_gs.observed_trajectory[-1, 0] < self.agent_lt.observed_trajectory[-1, 0] \
@@ -172,11 +205,11 @@ class Simulator:
                     self.semantic_result = 'unfinished'
                     print('interaction is not finished. \n')
 
-    def visualize(self, simu_type):
+    def visualize(self):
         # set figures
         fig, ax = plt.subplots()
         plt.title('trajectory_LT_' + self.semantic_result)
-        if simu_type == 'simu':
+        if self.sim_type == 'simu':
             img = plt.imread('background_pic/T_intersection.jpg')
             plt.imshow(img, extent=[-9.1, 24.9, -13, 8])
             plt.xlim([-9.1, 24.9])
@@ -184,7 +217,7 @@ class Simulator:
             # central vertices
             cv_it, _ = get_central_vertices('lt')
             cv_gs, _ = get_central_vertices('gs')
-        else:
+        elif self.sim_type == 'nds':
             plt.xlim([-22 - 13, 53 - 13])
             plt.ylim([-31 - 7.8, 57 - 7.8])
             img = plt.imread('./background_pic/Jianhexianxia.jpg')
@@ -212,25 +245,25 @@ class Simulator:
 
         # ----position at each time step
         # version 1
-        # for t in range(num_frame):
-        #     draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_heading[t], ax,
-        #                    para_alpha=(t + 1) / num_frame, para_color='#0E76CF')
-        #     draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_heading[t], ax,
-        #                    para_alpha=(t + 1) / num_frame, para_color='#7030A0')
+        for t in range(num_frame):
+            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_heading[t], ax,
+                           para_alpha=(t + 1) / num_frame, para_color='#0E76CF')
+            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_heading[t], ax,
+                           para_alpha=(t + 1) / num_frame, para_color='#7030A0')
 
         # version 2
-        plt.scatter(lt_ob_trj[:, 0],
-                    lt_ob_trj[:, 1],
-                    s=80,
-                    alpha=0.6,
-                    color='#0E76CF',
-                    label='left-turn')
-        plt.scatter(gs_ob_trj[:, 0],
-                    gs_ob_trj[:, 1],
-                    s=80,
-                    alpha=0.6,
-                    color='#7030A0',
-                    label='go-straight')
+        # plt.scatter(lt_ob_trj[:, 0],
+        #             lt_ob_trj[:, 1],
+        #             s=80,
+        #             alpha=0.6,
+        #             color='#0E76CF',
+        #             label='left-turn')
+        # plt.scatter(gs_ob_trj[:, 0],
+        #             gs_ob_trj[:, 1],
+        #             s=80,
+        #             alpha=0.6,
+        #             color='#7030A0',
+        #             label='go-straight')
 
         # ----full tracks at each time step
         # for t in range(self.num_step):
@@ -321,10 +354,11 @@ def main1():
                              [controller_type_lt, controller_type_gs])
 
     simu = Simulator()
+    simu.simtype = 'simu'
     simu.initialize(simu_scenario, tag)
     simu.interact(simu_step=10)
     simu.post_process()
-    simu.visualize(simu_type='simu')
+    simu.visualize()
 
 
 def main2():
@@ -338,6 +372,7 @@ def main2():
     tag = 'nds-simu'
 
     simu = Simulator(case_id=51)
+    simu.simtype = 'nds'
     controller_type_lt = 'opt'
     controller_type_gs = 'opt'
     simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
@@ -347,7 +382,7 @@ def main2():
         simu.agent_lt.target = 'lt_nds'
         simu.interact(simu_step=10)
         simu.post_process()
-        simu.visualize(simu_type='nds')
+        simu.visualize()
 
 
 def main_replay():
@@ -359,17 +394,18 @@ def main_replay():
     tag = 'test-replay'
 
     simu = Simulator(case_id=51)
+    simu.sim_type = 'nds'
     controller_type_lt = 'lattice'
-    controller_type_gs = 'replay'
+    controller_type_gs = 'opt'
     simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
     if simu_scenario:
         simu.initialize(simu_scenario, tag)
         simu.agent_gs.target = 'gs_nds'
         simu.agent_lt.target = 'lt_nds'
-        simu.agent_lt.ipv = math.pi/3
+        simu.agent_gs.ipv = math.pi/3
         simu.interact(simu_step=20)
         simu.post_process()
-        simu.visualize(simu_type='nds')
+        simu.visualize()
 
 
 if __name__ == '__main__':

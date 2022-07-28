@@ -76,8 +76,8 @@ def kinematic_model(u, init_state, TRACK_LEN, dt):
 
 
 def draw_rectangle(x, y, deg, ax, para_alpha=0.5, para_color='blue'):
-    car_len = 1
-    car_wid = 2
+    car_len = 1.5
+    car_wid = 3
     # fig = plt.figure()
     # ax = fig.add_subplot(111)
 

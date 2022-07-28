@@ -41,6 +41,7 @@ class Agent:
         self.velocity = velocity
         self.heading = heading
         self.target = target
+        self.track_len = TRACK_LEN
         # conducted trajectory
         self.observed_trajectory = np.array([[self.position[0],
                                               self.position[1],

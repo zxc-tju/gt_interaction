@@ -38,13 +38,13 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
         obstacle.MatchPath(path_points)
 
     theta_thr = M_PI / 6  # delta theta threhold, deviation from matched path
-    ttcs = [3, 4, 5]  # static ascending time-to-collision, sec
+    ttcs = [2, 3, 4, 5]  # static ascending time-to-collision, sec
 
     samp_basis = SampleBasis(traj_point, theta_thr, ttcs)
     local_planner = LocalPlanner(traj_point, path_points, obstacles, samp_basis)
-    print(local_planner.status, local_planner.to_stop)
+    # print(local_planner.status, local_planner.to_stop)
     traj_points_opt = local_planner.LocalPlanning(traj_point, path_points, obstacles, samp_basis)
-    print(local_planner.v_end, samp_basis.v_end)
+    # print(local_planner.v_end, samp_basis.v_end)
 
     if not traj_points_opt:
         print("扩大范围")
@@ -79,7 +79,7 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
 
 if __name__ == '__main__':
 
-    path_point = np.loadtxt("roadMap_lzjSouth1.txt")
+    path_point = np.loadtxt("../data/roadMap_lzjSouth1.txt")
     path_point = path_point[:, 1:3]
     obstacle_data = {'px': -260,
                      'py': -500,
