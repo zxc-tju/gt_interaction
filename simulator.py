@@ -6,6 +6,7 @@ import math
 import numpy as np
 from agent import Agent
 from tools.utility import draw_rectangle, get_central_vertices
+from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
 from NDS_analysis import analyze_ipv_in_nds
 
@@ -72,6 +73,23 @@ class Simulator:
             elif self.agent_lt.conl_type in {'opt'}:
                 self.agent_lt.opt_plan()
 
+            elif self.agent_lt.conl_type in {'replay'}:
+                track_len = np.size(self.agent_lt.trj_solution, 0)
+                # t_end = min(t + track_len, np.size(self.agent_gs.trj_solution, 0))
+                t_end = t + track_len
+                self.agent_lt.trj_solution = self.lt_actual_trj[t:t_end, :]
+
+            elif self.agent_lt.conl_type in {'lattice'}:
+                path_point, _ = get_central_vertices('lt_nds', origin_point=self.agent_lt.position)
+                obstacle_data = {'px': self.agent_gs.position[0],
+                                 'py': self.agent_gs.position[1],
+                                 'v': np.linalg.norm(self.agent_gs.velocity)}
+                initial_state = {'px': self.agent_lt.position[0],
+                                 'py': self.agent_lt.position[1],
+                                 'v': np.linalg.norm(self.agent_lt.velocity)}
+                res = lattice_planning(path_point, obstacle_data, initial_state)
+                self.agent_lt.trj_solution = np.array(res)
+
             "==plan for go straight=="
             if self.agent_gs.conl_type in {'gt'}:
                 # ==interaction with parallel virtual agents
@@ -82,6 +100,23 @@ class Simulator:
 
             elif self.agent_gs.conl_type in {'opt'}:
                 self.agent_gs.opt_plan()
+
+            elif self.agent_gs.conl_type in {'replay'}:
+                track_len = np.size(self.agent_gs.trj_solution, 0)
+                # t_end = min(t + track_len, np.size(self.agent_gs.trj_solution, 0))
+                t_end = t + track_len
+                self.agent_gs.trj_solution = self.gs_actual_trj[t:t_end, :]
+
+            elif self.agent_gs.conl_type in {'lattice'}:
+                path_point, _ = get_central_vertices('gs_nds', origin_point=self.agent_gs.position)
+                obstacle_data = {'px': self.agent_lt.position[0],
+                                 'py': self.agent_lt.position[1],
+                                 'v': np.linalg.norm(self.agent_lt.velocity)}
+                initial_state = {'px': self.agent_gs.position[0],
+                                 'py': self.agent_gs.position[1],
+                                 'v': np.linalg.norm(self.agent_gs.velocity)}
+                res = lattice_planning(path_point, obstacle_data, initial_state)
+                self.agent_gs.trj_solution = np.array(res)
 
             "==update state=="
             self.agent_lt.update_state(self.agent_gs)
@@ -150,10 +185,10 @@ class Simulator:
             cv_it, _ = get_central_vertices('lt')
             cv_gs, _ = get_central_vertices('gs')
         else:
-            plt.xlim([-22-13, 53-13])
-            plt.ylim([-31-7.8, 57-7.8])
+            plt.xlim([-22 - 13, 53 - 13])
+            plt.ylim([-31 - 7.8, 57 - 7.8])
             img = plt.imread('./background_pic/Jianhexianxia.jpg')
-            plt.imshow(img, extent=[-22-13, 53-13, -31-7.8, 57-7.8])
+            plt.imshow(img, extent=[-22 - 13, 53 - 13, -31 - 7.8, 57 - 7.8])
             # central vertices
             lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
             gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
@@ -172,29 +207,8 @@ class Simulator:
         num_frame = len(lt_ob_trj)
 
         "---- show plans at each time step ----"
-        # # central vertices
-        # cv_it, _ = get_central_vertices('lt')
-        # cv_gs, _ = get_central_vertices('gs')
-        # ax1.plot(cv_it[:, 0], cv_it[:, 1], 'r-')
-        # ax1.plot(cv_gs[:, 0], cv_gs[:, 1], 'b-')
-
-        # position at each time step
-        for t in range(num_frame):
-            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_heading[t], ax,
-                           para_alpha=(t + 1) / num_frame, para_color='#0E76CF')
-            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_heading[t], ax,
-                           para_alpha=(t + 1) / num_frame, para_color='#7030A0')
-
-        # full tracks at each time step
-        for t in range(self.num_step):
-            lt_track = self.agent_lt.trj_solution_collection[t]
-            plt.plot(lt_track[:, 0], lt_track[:, 1], '--', color='black')
-            gs_track = self.agent_gs.trj_solution_collection[t]
-            plt.plot(gs_track[:, 0], gs_track[:, 1], '--', color='black')
-
-        "====show trajectories===="
-        plt.plot(cv_it[:, 0], cv_it[:, 1], 'r-')
-        plt.plot(cv_gs[:, 0], cv_gs[:, 1], 'b-')
+        # plt.plot(cv_it[:, 0], cv_it[:, 1], 'b-')
+        # plt.plot(cv_gs[:, 0], cv_gs[:, 1], 'r-')
 
         # ----position at each time step
         # version 1
@@ -209,13 +223,13 @@ class Simulator:
                     lt_ob_trj[:, 1],
                     s=80,
                     alpha=0.6,
-                    color='red',
+                    color='#0E76CF',
                     label='left-turn')
         plt.scatter(gs_ob_trj[:, 0],
                     gs_ob_trj[:, 1],
                     s=80,
                     alpha=0.6,
-                    color='blue',
+                    color='#7030A0',
                     label='go-straight')
 
         # ----full tracks at each time step
@@ -233,7 +247,6 @@ class Simulator:
                      alpha=0.2)
 
         "---- show velocity ----"
-
         # plt.figure(2)
         # x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
         # vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
@@ -241,7 +254,7 @@ class Simulator:
         # plt.plot(x_range, vel_norm_lt, color='red', label='LT velocity')
         # plt.plot(x_range, vel_norm_gs, color='blue', label='FC velocity')
         # plt.legend()
-        # plt.show()
+        plt.show()
 
     def read_nds_scenario(self, controller_type_lt, controller_type_gs):
         cross_id, data_cross, _ = analyze_ipv_in_nds(self.case_id)
@@ -252,16 +265,21 @@ class Simulator:
         if cross_id == -1:
             return None
         else:
-            init_position_lt = [data_cross[0, 2]-13, data_cross[0, 3]-7.8]
-            init_velocity_lt = [data_cross[0, 4]-13, data_cross[0, 5]-7.8]
+            init_position_lt = [data_cross[0, 2] - 13, data_cross[0, 3] - 7.8]
+            init_velocity_lt = [data_cross[0, 4] - 13, data_cross[0, 5] - 7.8]
             init_heading_lt = data_cross[0, 6]
             ipv_lt = np.mean(data_cross[4:, 0])
-            init_position_gs = [data_cross[0, 9]-13, data_cross[0, 10]-7.8]
-            init_velocity_gs = [data_cross[0, 11]-13, data_cross[0, 12]-7.8]
+            init_position_gs = [data_cross[0, 9] - 13, data_cross[0, 10] - 7.8]
+            init_velocity_gs = [data_cross[0, 11] - 13, data_cross[0, 12] - 7.8]
             init_heading_gs = data_cross[0, 13]
             ipv_gs = np.mean(data_cross[4:, 7])
-            # self.lt_actual_trj = data_cross[:, 2:4]
-            # self.gs_actual_trj = data_cross[:, 9:11]
+            self.lt_actual_trj = data_cross[:, 2:7]
+            self.lt_actual_trj[:, 0] = self.lt_actual_trj[:, 0]-13
+            self.lt_actual_trj[:, 1] = self.lt_actual_trj[:, 1]-7.8
+
+            self.gs_actual_trj = data_cross[:, 9:14]
+            self.gs_actual_trj[:, 0] = self.gs_actual_trj[:, 0] - 13
+            self.gs_actual_trj[:, 1] = self.gs_actual_trj[:, 1] - 7.8
 
             return Scenario([init_position_lt, init_position_gs],
                             [init_velocity_lt, init_velocity_gs],
@@ -271,7 +289,6 @@ class Simulator:
 
 
 def main1():
-
     """
     === main for simulating unprotected left-turning ===
     1. Set initial motion state before the simulation
@@ -303,16 +320,23 @@ def main1():
                              [ipv_lt, ipv_gs],
                              [controller_type_lt, controller_type_gs])
 
-
     simu = Simulator()
     simu.initialize(simu_scenario, tag)
-    simu.interact(simu_step=30)
+    simu.interact(simu_step=10)
     simu.post_process()
     simu.visualize(simu_type='simu')
 
 
 def main2():
+    """
+       === main for simulating unprotected left-turning scenarios in Jianhe-Xianxia dataset ===
+       1. Set case_id to get initial scenarios state of a single case
+       2. Change controller type by manually setting controller_type_xx as 'gt' or 'opt'
+           * 'gt' is the game-theoretic planner work by solving IBR process
+           * 'opt' is the optimal controller work by solving single optimization
+       """
     tag = 'nds-simu'
+
     simu = Simulator(case_id=51)
     controller_type_lt = 'opt'
     controller_type_gs = 'opt'
@@ -326,10 +350,34 @@ def main2():
         simu.visualize(simu_type='nds')
 
 
+def main_replay():
+    """
+    === main for testing a planner with replayed trajectory ===
+        * set lt agent as the vehicle under test (ipv=pi/4)
+    """
+
+    tag = 'test-replay'
+
+    simu = Simulator(case_id=51)
+    controller_type_lt = 'lattice'
+    controller_type_gs = 'replay'
+    simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
+    if simu_scenario:
+        simu.initialize(simu_scenario, tag)
+        simu.agent_gs.target = 'gs_nds'
+        simu.agent_lt.target = 'lt_nds'
+        simu.agent_lt.ipv = math.pi/3
+        simu.interact(simu_step=20)
+        simu.post_process()
+        simu.visualize(simu_type='nds')
+
 
 if __name__ == '__main__':
-    'unprotected left-turn at a T-intersection'
+    'simulate unprotected left-turn at a T-intersection'
     # main1()
 
-    'test with nds data from Jianhe-Xianxia intersection (TODO)'
-    main2()
+    'simulate with nds data from Jianhe-Xianxia intersection'
+    # main2()
+
+    'test lattice planner with trajectory replay'
+    main_replay()

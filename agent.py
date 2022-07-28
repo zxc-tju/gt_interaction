@@ -8,7 +8,7 @@ from tools.utility import get_central_vertices, kinematic_model
 import copy
 
 # simulation setting
-dt = 0.2
+dt = 0.12
 TRACK_LEN = 6
 MAX_DELTA_UT = 1e-4
 
@@ -179,7 +179,7 @@ def utility_ibr(self_info, track_inter):
         Calculate the utility from the perspective of "self" agent
 
         :param u: num_step by 4 array, where the 1\2 columns are control of "self" agent
-                  and 3\4 columns "inter" agent
+                  and 3\4 columns control of "interacting" agent
         :return: utility of the "self" agent under the control u
         """
         p, v, h = self_info[0:3]
@@ -188,7 +188,7 @@ def utility_ibr(self_info, track_inter):
         track_self = track_info_self[:, 0:2]
         track_all = [track_self, track_inter[:, 0:2]]
         # print(np.sin(self_info[3]))
-        interior_cost = cal_interior_cost(track_self, self_info[4])
+        interior_cost = cal_individual_cost(track_self, self_info[4])
         group_cost = cal_group_cost(track_all)
         util = np.cos(self_info[3]) * interior_cost + np.sin(self_info[3]) * group_cost
         # print('interior_cost:', interior_cost)
@@ -198,7 +198,7 @@ def utility_ibr(self_info, track_inter):
     return fun
 
 
-def cal_interior_cost(track, target):
+def cal_individual_cost(track, target):
     """
     Cost that related to a single agent
     """
@@ -296,13 +296,13 @@ def cal_reliability(inter_track, act_track, vir_track_coll, target):
 
     else:
         # calculate with cost preference similarity
-        interior_cost_observed = cal_interior_cost(act_track, target)
+        interior_cost_observed = cal_individual_cost(act_track, target)
         group_cost_observed = cal_group_cost([act_track, inter_track])
         cost_preference_observed = math.atan(group_cost_observed / interior_cost_observed)
 
         for i in range(candidates_num):
             virtual_track = vir_track_coll[i]
-            interior_cost_vir[i] = cal_interior_cost(virtual_track, target)
+            interior_cost_vir[i] = cal_individual_cost(virtual_track, target)
             group_cost_vir[i] = cal_group_cost([virtual_track, inter_track])
             cost_preference_vir[i] = math.atan(group_cost_vir[i] / interior_cost_vir[i])
             delta_pref[i] = cost_preference_vir[i] - cost_preference_observed
