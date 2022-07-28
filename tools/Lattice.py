@@ -11,8 +11,8 @@ import scipy.signal
 M_PI = 3.141593
 
 # 车辆属性, global const. and local var. check!
-VEH_L = 1
-VEH_W = 0.5
+VEH_L = 3
+VEH_W = 1.5
 MAX_V = 200
 MIN_V = -10000
 '''
@@ -22,7 +22,7 @@ MAX_LAT_A = 100 #参考apollo，横向约束应该是给到向心加速度，而
 '''
 delta_t = 0.12  # fixed time between two consecutive trajectory points, sec
 v_tgt = 6.0  # fixed target speed, m/s
-sight_range = 10  # 判断有无障碍物的视野距离
+sight_range = 20  # 判断有无障碍物的视野距离
 
 # cost权重
 SPEED_COST_WEIGHT = 1  # 速度和目标速度差距，暂时不用

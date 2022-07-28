@@ -86,11 +86,13 @@ class Simulator:
                 path_point, _ = get_central_vertices('lt_nds', origin_point=self.agent_lt.position)
                 obstacle_data = {'px': self.agent_gs.position[0],
                                  'py': self.agent_gs.position[1],
-                                 'v': np.linalg.norm(self.agent_gs.velocity)}
+                                 'v': np.linalg.norm(self.agent_gs.velocity),
+                                 'heading': self.agent_gs.heading}
                 initial_state = {'px': self.agent_lt.position[0],
                                  'py': self.agent_lt.position[1],
-                                 'v': np.linalg.norm(self.agent_lt.velocity)}
-                res = lattice_planning(path_point, obstacle_data, initial_state)
+                                 'v': np.linalg.norm(self.agent_lt.velocity),
+                                 'heading': self.agent_lt.heading}
+                res = lattice_planning(path_point, obstacle_data, initial_state, show_res=False)
                 self.agent_lt.trj_solution = np.array(res[:self.agent_lt.track_len])
 
             "==plan for go straight=="
@@ -113,11 +115,13 @@ class Simulator:
                 path_point, _ = get_central_vertices('gs_nds', origin_point=self.agent_gs.position)
                 obstacle_data = {'px': self.agent_lt.position[0],
                                  'py': self.agent_lt.position[1],
-                                 'v': np.linalg.norm(self.agent_lt.velocity)}
+                                 'v': np.linalg.norm(self.agent_lt.velocity),
+                                 'heading': self.agent_lt.heading}
                 initial_state = {'px': self.agent_gs.position[0],
                                  'py': self.agent_gs.position[1],
-                                 'v': np.linalg.norm(self.agent_gs.velocity)}
-                res = lattice_planning(path_point, obstacle_data, initial_state)
+                                 'v': np.linalg.norm(self.agent_gs.velocity),
+                                 'heading': self.agent_gs.heading}
+                res = lattice_planning(path_point, obstacle_data, initial_state, show_res=False)
                 self.agent_gs.trj_solution = np.array(res[:self.agent_gs.track_len])
 
             "==update state=="
@@ -137,8 +141,8 @@ class Simulator:
             elif self.sim_type == 'nds':
                 plt.xlim([-22 - 13, 53 - 13])
                 plt.ylim([-31 - 7.8, 57 - 7.8])
-                img = plt.imread('./background_pic/Jianhexianxia.jpg')
-                plt.imshow(img, extent=[-22 - 13, 53 - 13, -31 - 7.8, 57 - 7.8])
+                img = plt.imread('background_pic/Jianhexianxia-v2.png')
+                plt.imshow(img, extent=[-28-13, 58-13, -42-7.8, 64-7.8])
                 # central vertices
                 lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
                 gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
@@ -153,7 +157,8 @@ class Simulator:
                                para_alpha=1, para_color='#7030A0')
             ax.axis('scaled')
             plt.show()
-            plt.pause(0.5)
+            plt.pause(0.1)
+            plt.savefig('figures/' + self.tag + str(t) + '.png')
 
             if break_when_finish:
                 if self.agent_gs.observed_trajectory[-1, 0] < self.agent_lt.observed_trajectory[-1, 0] \
@@ -161,7 +166,7 @@ class Simulator:
                     self.num_step = t + 1
                     break
 
-    def post_process(self):
+    def get_semantic_result(self):
         """
         Identify semantic interaction results after simulation:
         1. crashed or not (not critical judgement)
@@ -206,6 +211,9 @@ class Simulator:
                     print('interaction is not finished. \n')
 
     def visualize(self):
+
+        cv_lt = []
+        cv_gs = []
         # set figures
         fig, ax = plt.subplots()
         plt.title('trajectory_LT_' + self.semantic_result)
@@ -215,17 +223,17 @@ class Simulator:
             plt.xlim([-9.1, 24.9])
             plt.ylim([-13, 8])
             # central vertices
-            cv_it, _ = get_central_vertices('lt')
+            cv_lt, _ = get_central_vertices('lt')
             cv_gs, _ = get_central_vertices('gs')
         elif self.sim_type == 'nds':
             plt.xlim([-22 - 13, 53 - 13])
             plt.ylim([-31 - 7.8, 57 - 7.8])
-            img = plt.imread('./background_pic/Jianhexianxia.jpg')
-            plt.imshow(img, extent=[-22 - 13, 53 - 13, -31 - 7.8, 57 - 7.8])
+            img = plt.imread('background_pic/Jianhexianxia-v2.png')
+            plt.imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
             # central vertices
             lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
             gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
-            cv_it, _ = get_central_vertices('lt_nds', origin_point=lt_origin_point)
+            cv_lt, _ = get_central_vertices('lt_nds', origin_point=lt_origin_point)
             cv_gs, _ = get_central_vertices('gs_nds', origin_point=gs_origin_point)
 
         "---- data abstraction ----"
@@ -240,8 +248,8 @@ class Simulator:
         num_frame = len(lt_ob_trj)
 
         "---- show plans at each time step ----"
-        # plt.plot(cv_it[:, 0], cv_it[:, 1], 'b-')
-        # plt.plot(cv_gs[:, 0], cv_gs[:, 1], 'r-')
+        plt.plot(cv_lt[:, 0], cv_lt[:, 1], 'b-')
+        plt.plot(cv_gs[:, 0], cv_gs[:, 1], 'r-')
 
         # ----position at each time step
         # version 1
@@ -357,7 +365,7 @@ def main1():
     simu.simtype = 'simu'
     simu.initialize(simu_scenario, tag)
     simu.interact(simu_step=10)
-    simu.post_process()
+    simu.get_semantic_result()
     simu.visualize()
 
 
@@ -381,7 +389,7 @@ def main2():
         simu.agent_gs.target = 'gs_nds'
         simu.agent_lt.target = 'lt_nds'
         simu.interact(simu_step=10)
-        simu.post_process()
+        simu.get_semantic_result()
         simu.visualize()
 
 
@@ -391,20 +399,20 @@ def main_replay():
         * set lt agent as the vehicle under test (ipv=pi/4)
     """
 
-    tag = 'test-replay'
+    tag = 'replay'
 
     simu = Simulator(case_id=51)
     simu.sim_type = 'nds'
-    controller_type_lt = 'lattice'
-    controller_type_gs = 'opt'
+    controller_type_lt = 'replay'
+    controller_type_gs = 'replay'
     simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
     if simu_scenario:
         simu.initialize(simu_scenario, tag)
         simu.agent_gs.target = 'gs_nds'
         simu.agent_lt.target = 'lt_nds'
-        simu.agent_gs.ipv = math.pi/3
-        simu.interact(simu_step=20)
-        simu.post_process()
+        # simu.agent_gs.ipv = math.pi/4
+        simu.interact(simu_step=15)
+        simu.get_semantic_result()
         simu.visualize()
 
 
