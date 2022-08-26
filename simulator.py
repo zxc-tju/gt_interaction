@@ -309,16 +309,16 @@ class Simulator:
             return None
         else:
             init_position_lt = [data_cross[0, 2] - 13, data_cross[0, 3] - 7.8]
-            init_velocity_lt = [data_cross[0, 4] - 13, data_cross[0, 5] - 7.8]
+            init_velocity_lt = [data_cross[0, 4], data_cross[0, 5]]
             init_heading_lt = data_cross[0, 6]
             ipv_lt = np.mean(data_cross[4:, 0])
             init_position_gs = [data_cross[0, 9] - 13, data_cross[0, 10] - 7.8]
-            init_velocity_gs = [data_cross[0, 11] - 13, data_cross[0, 12] - 7.8]
+            init_velocity_gs = [data_cross[0, 11], data_cross[0, 12]]
             init_heading_gs = data_cross[0, 13]
             ipv_gs = np.mean(data_cross[4:, 7])
             self.lt_actual_trj = data_cross[:, 2:7]
-            self.lt_actual_trj[:, 0] = self.lt_actual_trj[:, 0]-13
-            self.lt_actual_trj[:, 1] = self.lt_actual_trj[:, 1]-7.8
+            self.lt_actual_trj[:, 0] = self.lt_actual_trj[:, 0] - 13
+            self.lt_actual_trj[:, 1] = self.lt_actual_trj[:, 1] - 7.8
 
             self.gs_actual_trj = data_cross[:, 9:14]
             self.gs_actual_trj[:, 0] = self.gs_actual_trj[:, 0] - 13

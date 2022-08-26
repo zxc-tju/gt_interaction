@@ -9,7 +9,7 @@ import copy
 
 # simulation setting
 dt = 0.12
-TRACK_LEN = 6
+TRACK_LEN = 10
 MAX_DELTA_UT = 1e-4
 
 # weights for calculate interior cost
@@ -24,7 +24,7 @@ WEIGHT_GRP = 0.4
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
-MAX_ACCELERATION = 3.0
+MAX_ACCELERATION = 2.0
 
 # initial guess on interacting agent's IPV
 INITIAL_IPV_GUESS = 0
