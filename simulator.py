@@ -59,10 +59,11 @@ class Simulator:
 
         """
         self.num_step = simu_step
-        iter_limit = 10
+        iter_limit = 3
 
-        plt.ion()
-        _, ax = plt.subplots()
+        if make_video:
+            plt.ion()
+            _, ax = plt.subplots()
 
         for t in range(self.num_step):
             print('time_step: ', t, '/', self.num_step)
@@ -144,23 +145,23 @@ class Simulator:
                     plt.xlim([-22 - 13, 53 - 13])
                     plt.ylim([-31 - 7.8, 57 - 7.8])
                     img = plt.imread('background_pic/Jianhexianxia-v2.png')
-                    plt.imshow(img, extent=[-28-13, 58-13, -42-7.8, 64-7.8])
+                    plt.imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
                     # central vertices
                     lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
                     gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
                     cv_it, _ = get_central_vertices('lt_nds', origin_point=lt_origin_point)
                     cv_gs, _ = get_central_vertices('gs_nds', origin_point=gs_origin_point)
 
-                    draw_rectangle(self.agent_lt.position[0], self.agent_lt.position[1],
-                                   self.agent_lt.heading / math.pi * 180, ax,
-                                   para_alpha=1, para_color='#0E76CF')
-                    draw_rectangle(self.agent_gs.position[0], self.agent_gs.position[1],
-                                   self.agent_gs.heading / math.pi * 180, ax,
-                                   para_alpha=1, para_color='#7030A0')
+                draw_rectangle(self.agent_lt.position[0], self.agent_lt.position[1],
+                               self.agent_lt.heading / math.pi * 180, ax,
+                               para_alpha=1, para_color='#0E76CF')
+                draw_rectangle(self.agent_gs.position[0], self.agent_gs.position[1],
+                               self.agent_gs.heading / math.pi * 180, ax,
+                               para_alpha=1, para_color='#7030A0')
                 ax.axis('scaled')
                 plt.show()
                 plt.pause(0.1)
-                plt.savefig('figures/' + self.tag + str(t) + '.png')
+                plt.savefig('figures/' + self.tag + '-' + str(t) + '.png', dpi=300)
 
             if break_when_finish:
                 if self.agent_gs.observed_trajectory[-1, 0] < self.agent_lt.observed_trajectory[-1, 0] \
@@ -217,21 +218,21 @@ class Simulator:
         cv_lt = []
         cv_gs = []
         # set figures
-        fig, ax = plt.subplots()
-        plt.title('trajectory_LT_' + self.semantic_result)
+        fig, axes = plt.subplots(1, 2, figsize=[8, 4])
+        fig.suptitle('trajectory_LT_' + self.semantic_result)
+        axes[0].set_title('trajectory')
+        axes[1].set_title('velocity')
         if self.sim_type == 'simu':
+            axes[0].set(aspect=1, xlim=(-9.1, 24.9), ylim=(-13, 8))
             img = plt.imread('background_pic/T_intersection.jpg')
-            plt.imshow(img, extent=[-9.1, 24.9, -13, 8])
-            plt.xlim([-9.1, 24.9])
-            plt.ylim([-13, 8])
+            axes[0].imshow(img, extent=[-9.1, 24.9, -13, 8])
             # central vertices
             cv_lt, _ = get_central_vertices('lt')
             cv_gs, _ = get_central_vertices('gs')
         elif self.sim_type == 'nds':
-            plt.xlim([-22 - 13, 53 - 13])
-            plt.ylim([-31 - 7.8, 57 - 7.8])
+            axes[0].set(aspect=1, xlim=(-22 - 13, 53 - 13), ylim=(-31 - 7.8, 57 - 7.8))
             img = plt.imread('background_pic/Jianhexianxia-v2.png')
-            plt.imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
+            axes[0].imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
             # central vertices
             lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
             gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
@@ -239,27 +240,42 @@ class Simulator:
             cv_gs, _ = get_central_vertices('gs_nds', origin_point=gs_origin_point)
 
         "---- data abstraction ----"
-        # lt track (observed and planned)
+        # lt track (observed in simulation and ground truth in nds)
         lt_ob_trj = self.agent_lt.observed_trajectory[:, 0:2]
-        lt_heading = self.agent_lt.observed_trajectory[:, 4] / math.pi * 180
+        lt_ob_heading = self.agent_lt.observed_trajectory[:, 4] / math.pi * 180
+        lt_nds_trj = np.array(self.lt_actual_trj[:, 0:2])
+        lt_nds_heading = np.array(self.lt_actual_trj[:, 4]) / math.pi * 180
+        vel_ob_vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
+        vel_nds_vel_norm_lt = np.linalg.norm(self.lt_actual_trj[:, 2:4], axis=1)
 
-        # gs track (observed and planned)
+        # gs track (observed in simulation and ground truth in nds)
         gs_ob_trj = self.agent_gs.observed_trajectory[:, 0:2]
-        gs_heading = self.agent_gs.observed_trajectory[:, 4] / math.pi * 180
+        gs_ob_heading = self.agent_gs.observed_trajectory[:, 4] / math.pi * 180
+        gs_nds_trj = np.array(self.gs_actual_trj[:, 0:2])
+        gs_nds_heading = np.array(self.gs_actual_trj[:, 4]) / math.pi * 180
+        vel_ob_vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
+        vel_nds_vel_norm_gs = np.linalg.norm(self.gs_actual_trj[:, 2:4], axis=1)
 
         num_frame = len(lt_ob_trj)
 
         "---- show plans at each time step ----"
-        plt.plot(cv_lt[:, 0], cv_lt[:, 1], 'b-')
-        plt.plot(cv_gs[:, 0], cv_gs[:, 1], 'r-')
+        axes[0].plot(cv_lt[:, 0], cv_lt[:, 1], 'b-')
+        axes[0].plot(cv_gs[:, 0], cv_gs[:, 1], 'r-')
 
         # ----position at each time step
         # version 1
         for t in range(num_frame):
-            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_heading[t], ax,
-                           para_alpha=(t + 1) / num_frame, para_color='#0E76CF')
-            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_heading[t], ax,
-                           para_alpha=(t + 1) / num_frame, para_color='#7030A0')
+            # simulation results
+            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
+                           para_alpha=0.3, para_color='#0E76CF')
+            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
+                           para_alpha=0.3, para_color='#7030A0')
+
+            # nds ground truth
+            draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
+                           para_alpha=0.3, para_color='blue')
+            draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
+                           para_alpha=0.3, para_color='red')
 
         # version 2
         # plt.scatter(lt_ob_trj[:, 0],
@@ -284,20 +300,21 @@ class Simulator:
 
         # ----connect two agents
         for t in range(self.num_step + 1):
-            plt.plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
-                     [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
-                     color='black',
-                     alpha=0.2)
+            axes[0].plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
+                         [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
+                         color='black',
+                         alpha=0.2)
 
         "---- show velocity ----"
-        # plt.figure(2)
-        # x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
-        # vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
-        # vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
-        # plt.plot(x_range, vel_norm_lt, color='red', label='LT velocity')
-        # plt.plot(x_range, vel_norm_gs, color='blue', label='FC velocity')
-        # plt.legend()
+        # plt.figure()
+        x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
+        axes[1].plot(x_range, vel_ob_vel_norm_lt, color='red', label='LT velocity simulation')
+        axes[1].plot(x_range, vel_ob_vel_norm_gs, color='blue', label='FC velocity simulation')
+        axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range], linestyle='--', color='red', label='LT velocity NDS')
+        axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range], linestyle='--', color='blue', label='FC velocity NDS')
+        axes[1].legend()
         plt.show()
+        plt.savefig('figures/' + self.tag + '-final.png', dpi=600)
 
     def read_nds_scenario(self, controller_type_lt, controller_type_gs):
         cross_id, data_cross, _ = analyze_ipv_in_nds(self.case_id)
@@ -315,7 +332,7 @@ class Simulator:
             init_position_gs = [data_cross[0, 9] - 13, data_cross[0, 10] - 7.8]
             init_velocity_gs = [data_cross[0, 11], data_cross[0, 12]]
             init_heading_gs = data_cross[0, 13]
-            ipv_gs = np.mean(data_cross[4:, 7])
+            ipv_gs = np.mean(data_cross[4:, 7])+0.4
             self.lt_actual_trj = data_cross[:, 2:7]
             self.lt_actual_trj[:, 0] = self.lt_actual_trj[:, 0] - 13
             self.lt_actual_trj[:, 1] = self.lt_actual_trj[:, 1] - 7.8
@@ -398,7 +415,7 @@ class Simulator:
         # error_smoothed_gs, _ = smooth_ployline(np.array([x_range, y_error_gs]).T)
         # y_error_gs_smoothed = error_smoothed_gs[:, 1]
         #
-        # plt.figure(2)
+        # plt.figure()
         # plt.fill_between(x_smoothed_lt, y_lt_smoothed - y_error_lt_smoothed, y_lt_smoothed + y_error_lt_smoothed,
         #                  alpha=0.3,
         #                  color='blue',
@@ -442,7 +459,7 @@ def main1():
                              [controller_type_lt, controller_type_gs])
 
     simu = Simulator()
-    simu.simtype = 'simu'
+    simu.sim_type = 'simu'
     simu.initialize(simu_scenario, tag)
     simu.interact(simu_step=10)
     simu.get_semantic_result()
@@ -457,29 +474,29 @@ def main2():
            * 'gt' is the game-theoretic planner work by solving IBR process
            * 'opt' is the optimal controller work by solving single optimization
        """
-    tag = 'nds-simu'
+    tag = 'nds-simu-case71'
 
-    simu = Simulator(case_id=51)
-    simu.simtype = 'nds'
-    controller_type_lt = 'opt'
-    controller_type_gs = 'opt'
+    simu = Simulator(case_id=71)
+    simu.sim_type = 'nds'
+    controller_type_lt = 'gt'
+    controller_type_gs = 'gt'
     simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
     if simu_scenario:
         simu.initialize(simu_scenario, tag)
         simu.agent_gs.target = 'gs_nds'
         simu.agent_lt.target = 'lt_nds'
-        simu.interact(simu_step=10)
+        simu.interact(simu_step=1, make_video=False, break_when_finish=False)
         simu.get_semantic_result()
         simu.visualize()
 
 
-def main_replay():
+def main_test():
     """
     === main for testing a planner with replayed trajectory ===
         * set lt agent as the vehicle under test (ipv=pi/4)
     """
 
-    tag = 'replay-test'
+    tag = 'gt-test'
 
     simu = Simulator(case_id=51)
     simu.sim_type = 'nds'
@@ -491,7 +508,7 @@ def main_replay():
         simu.agent_gs.target = 'gs_nds'
         simu.agent_lt.target = 'lt_nds'
         # simu.agent_gs.ipv = math.pi/4
-        simu.interact(simu_step=15)
+        simu.interact(simu_step=15, make_video=False)
         simu.get_semantic_result()
         simu.ipv_analysis()
         simu.visualize()
@@ -502,7 +519,7 @@ if __name__ == '__main__':
     # main1()
 
     'simulate with nds data from Jianhe-Xianxia intersection'
-    # main2()
+    main2()
 
     'test lattice planner with trajectory replay'
-    main_replay()
+    # main_test()
