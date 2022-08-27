@@ -10,7 +10,7 @@ from agent import Agent
 from tools.utility import draw_rectangle, get_central_vertices, smooth_ployline
 from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
-from NDS_analysis import analyze_ipv_in_nds
+from NDS_analysis import analyze_ipv_in_nds, cal_pet
 
 
 class Scenario:
@@ -305,15 +305,21 @@ class Simulator:
             init_position_lt = [data_cross[0, 2] - 13, data_cross[0, 3] - 7.8]
             init_velocity_lt = [data_cross[0, 4], data_cross[0, 5]]
             init_heading_lt = data_cross[0, 6]
-            ipv_weight_lt = 1 - data_cross[4:, 1]
-            ipv_weight_lt = ipv_weight_lt / ipv_weight_lt.sum()
-            ipv_lt = sum(ipv_weight_lt * data_cross[4:, 0])
+            if controller_type_lt in {'opt', 'gt'}:
+                ipv_weight_lt = 1 - data_cross[4:, 1]
+                ipv_weight_lt = ipv_weight_lt / ipv_weight_lt.sum()
+                ipv_lt = sum(ipv_weight_lt * data_cross[4:, 0])
+            else:
+                ipv_lt = 0
             init_position_gs = [data_cross[0, 9] - 13, data_cross[0, 10] - 7.8]
             init_velocity_gs = [data_cross[0, 11], data_cross[0, 12]]
             init_heading_gs = data_cross[0, 13]
-            ipv_weight_gs = 1 - data_cross[4:, 8]
-            ipv_weight_gs = ipv_weight_gs / ipv_weight_gs.sum()
-            ipv_gs = sum(ipv_weight_gs * data_cross[4:, 7])
+            if controller_type_gs in {'opt', 'gt'}:
+                ipv_weight_gs = 1 - data_cross[4:, 8]
+                ipv_weight_gs = ipv_weight_gs / ipv_weight_gs.sum()
+                ipv_gs = sum(ipv_weight_gs * data_cross[4:, 7])
+            else:
+                ipv_gs = 0
             self.lt_actual_trj = data_cross[:, 2:7]
             self.lt_actual_trj[:, 0] = self.lt_actual_trj[:, 0] - 13
             self.lt_actual_trj[:, 1] = self.lt_actual_trj[:, 1] - 7.8
@@ -418,45 +424,103 @@ class Simulator:
 
         "---- event data abstraction ----"
         # lt track (observed in simulation and ground truth in nds)
-        lt_ob_trj = self.agent_lt.observed_trajectory[:, 0:2]
-        lt_nds_trj = np.array(self.lt_actual_trj[:, 0:2])
+        ob_trj_lt = self.agent_lt.observed_trajectory[:, 0:2]
+        nds_trj_lt = np.array(self.lt_actual_trj[:, 0:2])
         vel_ob_vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
         vel_nds_vel_norm_lt = np.linalg.norm(self.lt_actual_trj[:, 2:4], axis=1)
 
         # gs track (observed in simulation and ground truth in nds)
-        gs_ob_trj = self.agent_gs.observed_trajectory[:, 0:2]
-        gs_nds_trj = np.array(self.gs_actual_trj[:, 0:2])
+        ob_trj_gs = self.agent_gs.observed_trajectory[:, 0:2]
+        nds_trj_gs = np.array(self.gs_actual_trj[:, 0:2])
         vel_ob_vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
         vel_nds_vel_norm_gs = np.linalg.norm(self.gs_actual_trj[:, 2:4], axis=1)
 
         "---- meta data ----"
+        # 1
         case_id = self.case_id
 
-        # semantic result
+        # ----semantic result
         seman_res_simu = self.semantic_result
-        semen_res_nds = get_semantic_result(lt_nds_trj, gs_nds_trj, case_type='nds')
+        semen_res_nds = get_semantic_result(nds_trj_lt, nds_trj_gs, case_type='nds')
+        # 2
         seman_right = bool(semen_res_nds == seman_res_simu)
 
-        # velocity
-        vel_simu = vel_ob_vel_norm_lt.mean()
-        vel_nds = vel_nds_vel_norm_lt.mean()
+        # ----velocity
+        # 3
+        mean_vel_simu_lt = vel_ob_vel_norm_lt.mean()
+        # 4
+        mean_vel_nds_lt = vel_nds_vel_norm_lt.mean()
+        # 5
+        mean_vel_simu_gs = vel_ob_vel_norm_gs.mean()
+        # 6
+        mean_vel_nds_gs = vel_nds_vel_norm_gs.mean()
+        # 7
+        vel_rmsne_lt = np.sqrt(
+            (((vel_ob_vel_norm_lt-vel_nds_vel_norm_lt)/vel_nds_vel_norm_lt) ** 2).sum()
+            / np.size(vel_ob_vel_norm_lt, 0))
+        # 8
+        vel_rmsne_gs = np.sqrt(
+            (((vel_ob_vel_norm_gs-vel_nds_vel_norm_gs)/vel_nds_vel_norm_gs) ** 2).sum()
+            / np.size(vel_ob_vel_norm_gs, 0))
 
-        # average position deviation
-        ave_pos_dev_lt = np.linalg.norm(lt_ob_trj - lt_nds_trj, axis=1).mean()
-        ave_pos_dev_gs = np.linalg.norm(gs_ob_trj - gs_nds_trj, axis=1).mean()
+        # ----position deviation
+        # 9
+        ave_pos_dev_lt = np.linalg.norm(ob_trj_lt - nds_trj_lt, axis=1).mean()
+        # 10
+        pos_rsme_lt = np.sqrt(
+            ((ave_pos_dev_lt - np.linalg.norm(ob_trj_lt - nds_trj_lt, axis=1)) ** 2).sum()
+            / np.size(ob_trj_lt, 0))
+        # 11
+        ave_pos_dev_gs = np.linalg.norm(ob_trj_gs - nds_trj_gs, axis=1).mean()
+        # 12
+        pos_rsme_gs = np.sqrt(
+            ((ave_pos_dev_gs - np.linalg.norm(ob_trj_gs - nds_trj_gs, axis=1)) ** 2).sum()
+            / np.size(ob_trj_gs, 0))
 
-        df = pd.DataFrame([[case_id, seman_right, vel_simu, vel_nds, ave_pos_dev_lt, ave_pos_dev_gs], ],
-                          columns=['case id', 'semantic result', 'simualtion velocity',
-                                   'nds velocity', 'position deviation_lt', 'position deviation_gs'])
+        # ----PET
+        apet_nds, _, _ = cal_pet(nds_trj_lt, nds_trj_gs, type_cal='apet')
+        # 13
+        min_apet_nds = apet_nds.min()
+        # 14
+        mean_apet_nds = apet_nds.mean()
+
+        apet_simu, _, _ = cal_pet(ob_trj_lt, ob_trj_gs, type_cal='apet')
+        # 15
+        min_apet_simu = apet_simu.min()
+        # 16
+        mean_apet_simu = apet_simu.mean()
+
+        "---- sava data ----"
+        # prepare data
+        df = pd.DataFrame([[case_id, seman_right,
+                            mean_vel_simu_lt, mean_vel_nds_lt,
+                            mean_vel_simu_gs, mean_vel_nds_gs,
+                            vel_rmsne_lt, vel_rmsne_gs,
+                            ave_pos_dev_lt, pos_rsme_lt,
+                            ave_pos_dev_gs, pos_rsme_gs,
+                            min_apet_nds, min_apet_simu,
+                            mean_apet_nds, mean_apet_simu], ],
+                          columns=['case id', 'semantic result',
+                                   'simualtion velocity lt', 'nds velocity lt',
+                                   'simualtion velocity gs', 'nds velocity gs',
+                                   'velocity RMSNE lt', 'velocity RMSNE gs',
+                                   'average POS deviation lt', 'POS RSME lt',
+                                   'average POS deviation gs', 'POS RSME gs',
+                                   'MIN APET NDS', 'MIN APET SIMU',
+                                   'mean APET NDS', 'mean APET SIMU', ])
+
         # write data
         if case_id == 0:
             header_flag = True
+            start_row = 0
         else:
             header_flag = False
+            start_row = case_id+1
+
         with pd.ExcelWriter('outputs/meta_data.xlsx', mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
             df.to_excel(writer, header=header_flag, index=False,
                         sheet_name='nds simulation',
-                        startcol=0, startrow=case_id)
+                        startcol=0, startrow=start_row)
 
 
 def get_semantic_result(track_lt, track_gs, case_type='simu'):
@@ -585,24 +649,25 @@ def main2():
            * 'opt' is the optimal controller work by solving single optimization
        """
 
-    # for case_id in range(130):
-    case_id = 123
-    tag = 'nds-simu-case' + str(case_id)
+    # case_id = 0
+    for case_id in range(130):
 
-    simu = Simulator(case_id=case_id)
-    simu.sim_type = 'nds'
-    controller_type_lt = 'opt'
-    controller_type_gs = 'opt'
-    simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
-    if simu_scenario:
-        simu.initialize(simu_scenario, tag)
-        simu.agent_gs.target = 'gs_nds'
-        simu.agent_lt.target = 'lt_nds'
-        simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
-        simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
-                                                   simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
-        simu.visualize()
-        simu.save_metadata()
+        tag = 'nds-simu-case' + str(case_id)
+
+        simu = Simulator(case_id=case_id)
+        simu.sim_type = 'nds'
+        controller_type_lt = 'opt'
+        controller_type_gs = 'opt'
+        simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
+        if simu_scenario:
+            simu.initialize(simu_scenario, tag)
+            simu.agent_gs.target = 'gs_nds'
+            simu.agent_lt.target = 'lt_nds'
+            simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+            simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
+                                                       simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
+            simu.visualize()
+            simu.save_metadata()
 
 
 def main_test():
