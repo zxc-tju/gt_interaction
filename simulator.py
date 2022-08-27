@@ -4,6 +4,8 @@ Interaction simulator
 import copy
 import math
 import numpy as np
+import xlsxwriter
+import pandas as pd
 from agent import Agent
 from tools.utility import draw_rectangle, get_central_vertices, smooth_ployline
 from tools.lattice_planner import lattice_planning
@@ -31,6 +33,7 @@ class Simulator:
         self.agent_lt = None
         self.agent_gs = None
         self.num_step = 0
+        self.case_len = 0
         self.ending_point = None
         self.gs_actual_trj = []
         self.lt_actual_trj = []
@@ -169,56 +172,12 @@ class Simulator:
                     self.num_step = t + 1
                     break
 
-    def get_semantic_result(self):
-        """
-        Identify semantic interaction results after simulation:
-        1. crashed or not (not critical judgement)
-        2. the left-turn vehicle yield or not
-        """
-        track_lt = self.agent_lt.observed_trajectory
-        track_gs = self.agent_gs.observed_trajectory
-        pos_delta = track_gs - track_lt
-        dis_delta = np.linalg.norm(pos_delta[:, 0:2], axis=1)
-
-        if min(dis_delta) < 1:
-            self.semantic_result = 'crashed'
-            print('interaction is crashed. \n')
-        else:
-            pos_x_smaller = pos_delta[pos_delta[:, 0] < 0]
-            if np.size(pos_x_smaller, 0):
-
-                "whether the LT vehicle yield"
-                pos_y_larger = pos_x_smaller[pos_x_smaller[:, 1] > 0]
-                yield_points = np.size(pos_y_larger, 0)
-                if yield_points:
-                    self.semantic_result = 'yield'
-
-                    "where the interaction finish"
-                    ind_coll = np.where(pos_y_larger[0, 0] == pos_delta[:, 0])
-                    ind = ind_coll[0] - 1
-                    self.ending_point = {'lt': self.agent_lt.observed_trajectory[ind, :],
-                                         'gs': self.agent_gs.observed_trajectory[ind, :]}
-
-                    print('LT vehicle yielded. \n')
-
-                else:
-                    self.semantic_result = 'rush'
-                    print('LT vehicle rushed. \n')
-            else:
-                pos_y_smaller = pos_delta[pos_delta[:, 1] < 0]
-                if np.size(pos_y_smaller, 0):
-                    self.semantic_result = 'rush'
-                    print('LT vehicle rushed. \n')
-                else:
-                    self.semantic_result = 'unfinished'
-                    print('interaction is not finished. \n')
-
     def visualize(self):
 
         cv_lt = []
         cv_gs = []
         # set figures
-        fig, axes = plt.subplots(1, 2, figsize=[8, 4])
+        fig, axes = plt.subplots(1, 2, figsize=[16, 8])
         fig.suptitle('trajectory_LT_' + self.semantic_result)
         axes[0].set_title('trajectory')
         axes[1].set_title('velocity')
@@ -264,32 +223,44 @@ class Simulator:
 
         # ----position at each time step
         # version 1
-        for t in range(num_frame):
-            # simulation results
-            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
-                           para_alpha=0.3, para_color='#0E76CF')
-            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
-                           para_alpha=0.3, para_color='#7030A0')
-
-            # nds ground truth
-            draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
-                           para_alpha=0.3, para_color='blue')
-            draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
-                           para_alpha=0.3, para_color='red')
+        # for t in range(num_frame):
+        #     # simulation results
+        #     draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
+        #                    para_alpha=0.3, para_color='#0E76CF')
+        #     draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
+        #                    para_alpha=0.3, para_color='#7030A0')
+        #
+        #     # nds ground truth
+        #     draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
+        #                    para_alpha=0.3, para_color='blue')
+        #     draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
+        #                    para_alpha=0.3, para_color='red')
 
         # version 2
-        # plt.scatter(lt_ob_trj[:, 0],
-        #             lt_ob_trj[:, 1],
-        #             s=80,
-        #             alpha=0.6,
-        #             color='#0E76CF',
-        #             label='left-turn')
-        # plt.scatter(gs_ob_trj[:, 0],
-        #             gs_ob_trj[:, 1],
-        #             s=80,
-        #             alpha=0.6,
-        #             color='#7030A0',
-        #             label='go-straight')
+        axes[0].scatter(lt_ob_trj[:num_frame, 0],
+                        lt_ob_trj[:num_frame, 1],
+                        s=50,
+                        alpha=0.3,
+                        color='#0E76CF',
+                        label='left-turn simulation')
+        axes[0].scatter(lt_nds_trj[:num_frame, 0],
+                        lt_nds_trj[:num_frame, 1],
+                        s=50,
+                        alpha=0.3,
+                        color='blue',
+                        label='left-turn NDS')
+        axes[0].scatter(gs_ob_trj[:num_frame, 0],
+                        gs_ob_trj[:num_frame, 1],
+                        s=50,
+                        alpha=0.3,
+                        color='#7030A0',
+                        label='go-straight simulation')
+        axes[0].scatter(gs_nds_trj[:num_frame, 0],
+                        gs_nds_trj[:num_frame, 1],
+                        s=50,
+                        alpha=0.3,
+                        color='red',
+                        label='go-straight NDS')
 
         # ----full tracks at each time step
         # for t in range(self.num_step):
@@ -299,22 +270,28 @@ class Simulator:
         #     plt.plot(gs_track[:, 0], gs_track[:, 1], '--', color='black')
 
         # ----connect two agents
-        for t in range(self.num_step + 1):
-            axes[0].plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
-                         [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
-                         color='black',
-                         alpha=0.2)
+        # for t in range(self.num_step + 1):
+        #     axes[0].plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
+        #                  [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
+        #                  color='black',
+        #                  alpha=0.2)
 
         "---- show velocity ----"
         # plt.figure()
         x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
-        axes[1].plot(x_range, vel_ob_vel_norm_lt, color='red', label='LT velocity simulation')
-        axes[1].plot(x_range, vel_ob_vel_norm_gs, color='blue', label='FC velocity simulation')
-        axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range], linestyle='--', color='red', label='LT velocity NDS')
-        axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range], linestyle='--', color='blue', label='FC velocity NDS')
+        axes[1].plot(x_range, vel_ob_vel_norm_lt,
+                     color='blue', label='LT velocity simulation')
+        axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range],
+                     linestyle='--', color='blue', label='LT velocity NDS')
+        axes[1].plot(x_range, vel_ob_vel_norm_gs,
+                     color='red', label='GS velocity simulation')
+        axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range],
+                     linestyle='--', color='red', label='GS velocity NDS')
         axes[1].legend()
+        axes[0].legend()
         plt.show()
         plt.savefig('figures/' + self.tag + '-final.png', dpi=600)
+        plt.close()
 
     def read_nds_scenario(self, controller_type_lt, controller_type_gs):
         cross_id, data_cross, _ = analyze_ipv_in_nds(self.case_id)
@@ -328,11 +305,15 @@ class Simulator:
             init_position_lt = [data_cross[0, 2] - 13, data_cross[0, 3] - 7.8]
             init_velocity_lt = [data_cross[0, 4], data_cross[0, 5]]
             init_heading_lt = data_cross[0, 6]
-            ipv_lt = np.mean(data_cross[4:, 0])
+            ipv_weight_lt = 1 - data_cross[4:, 1]
+            ipv_weight_lt = ipv_weight_lt / ipv_weight_lt.sum()
+            ipv_lt = sum(ipv_weight_lt * data_cross[4:, 0])
             init_position_gs = [data_cross[0, 9] - 13, data_cross[0, 10] - 7.8]
             init_velocity_gs = [data_cross[0, 11], data_cross[0, 12]]
             init_heading_gs = data_cross[0, 13]
-            ipv_gs = np.mean(data_cross[4:, 7])+0.4
+            ipv_weight_gs = 1 - data_cross[4:, 8]
+            ipv_weight_gs = ipv_weight_gs / ipv_weight_gs.sum()
+            ipv_gs = sum(ipv_weight_gs * data_cross[4:, 7])
             self.lt_actual_trj = data_cross[:, 2:7]
             self.lt_actual_trj[:, 0] = self.lt_actual_trj[:, 0] - 13
             self.lt_actual_trj[:, 1] = self.lt_actual_trj[:, 1] - 7.8
@@ -340,6 +321,8 @@ class Simulator:
             self.gs_actual_trj = data_cross[:, 9:14]
             self.gs_actual_trj[:, 0] = self.gs_actual_trj[:, 0] - 13
             self.gs_actual_trj[:, 1] = self.gs_actual_trj[:, 1] - 7.8
+
+            self.case_len = np.size(data_cross, 0)
 
             return Scenario([init_position_lt, init_position_gs],
                             [init_velocity_lt, init_velocity_gs],
@@ -425,6 +408,132 @@ class Simulator:
         #                  color='red',
         #                  label='estimated gs IPV')
 
+    def save_metadata(self):
+        """
+
+        Returns
+        -------
+
+        """
+
+        "---- event data abstraction ----"
+        # lt track (observed in simulation and ground truth in nds)
+        lt_ob_trj = self.agent_lt.observed_trajectory[:, 0:2]
+        lt_nds_trj = np.array(self.lt_actual_trj[:, 0:2])
+        vel_ob_vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
+        vel_nds_vel_norm_lt = np.linalg.norm(self.lt_actual_trj[:, 2:4], axis=1)
+
+        # gs track (observed in simulation and ground truth in nds)
+        gs_ob_trj = self.agent_gs.observed_trajectory[:, 0:2]
+        gs_nds_trj = np.array(self.gs_actual_trj[:, 0:2])
+        vel_ob_vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
+        vel_nds_vel_norm_gs = np.linalg.norm(self.gs_actual_trj[:, 2:4], axis=1)
+
+        "---- meta data ----"
+        case_id = self.case_id
+
+        # semantic result
+        seman_res_simu = self.semantic_result
+        semen_res_nds = get_semantic_result(lt_nds_trj, gs_nds_trj, case_type='nds')
+        seman_right = bool(semen_res_nds == seman_res_simu)
+
+        # velocity
+        vel_simu = vel_ob_vel_norm_lt.mean()
+        vel_nds = vel_nds_vel_norm_lt.mean()
+
+        # average position deviation
+        ave_pos_dev_lt = np.linalg.norm(lt_ob_trj - lt_nds_trj, axis=1).mean()
+        ave_pos_dev_gs = np.linalg.norm(gs_ob_trj - gs_nds_trj, axis=1).mean()
+
+        df = pd.DataFrame([[case_id, seman_right, vel_simu, vel_nds, ave_pos_dev_lt, ave_pos_dev_gs], ],
+                          columns=['case id', 'semantic result', 'simualtion velocity',
+                                   'nds velocity', 'position deviation_lt', 'position deviation_gs'])
+        # write data
+        if case_id == 0:
+            header_flag = True
+        else:
+            header_flag = False
+        with pd.ExcelWriter('outputs/meta_data.xlsx', mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
+            df.to_excel(writer, header=header_flag, index=False,
+                        sheet_name='nds simulation',
+                        startcol=0, startrow=case_id)
+
+
+def get_semantic_result(track_lt, track_gs, case_type='simu'):
+    """
+        Identify semantic interaction results after simulation:
+        1. crashed or not (not critical judgement)
+        2. the left-turn vehicle yield or not
+        """
+
+    pos_delta = track_gs - track_lt
+    dis_delta = np.linalg.norm(pos_delta[:, 0:2], axis=1)
+
+    if min(dis_delta) < 1:
+        semantic_result = 'crashed'
+        print('interaction is crashed. \n')
+    elif case_type == 'nds':
+        pos_y_larger = pos_delta[pos_delta[:, 1] > 0]
+        if np.size(pos_y_larger, 0):
+
+            "whether the LT vehicle yield"
+            pos_x_larger = pos_y_larger[pos_y_larger[:, 0] > 0]
+            yield_points = np.size(pos_x_larger, 0)
+            if yield_points:
+                semantic_result = 'yield'
+
+                "where the interaction finish"
+                ind_coll = np.where(pos_x_larger[0, 0] == pos_delta[:, 0])
+                ind = ind_coll[0] - 1
+                ending_point = {'lt': track_lt[ind, :],
+                                'gs': track_gs[ind, :]}
+
+                print('LT vehicle yielded. \n')
+
+            else:
+                semantic_result = 'rush'
+                print('LT vehicle rushed. \n')
+        else:
+            pos_x_smaller = pos_delta[pos_delta[:, 0] < -1]
+            if np.size(pos_x_smaller, 0):
+                semantic_result = 'rush'
+                print('LT vehicle rushed. \n')
+            else:
+                semantic_result = 'unfinished'
+                print('interaction is not finished. \n')
+
+    else:  # case_type == 'simu'
+        pos_x_smaller = pos_delta[pos_delta[:, 0] < 0]
+        if np.size(pos_x_smaller, 0):
+
+            "whether the LT vehicle yield"
+            pos_y_larger = pos_x_smaller[pos_x_smaller[:, 1] > 0]
+            yield_points = np.size(pos_y_larger, 0)
+            if yield_points:
+                semantic_result = 'yield'
+
+                "where the interaction finish"
+                ind_coll = np.where(pos_y_larger[0, 0] == pos_delta[:, 0])
+                ind = ind_coll[0] - 1
+                ending_point = {'lt': track_lt[ind, :],
+                                'gs': track_gs[ind, :]}
+
+                print('LT vehicle yielded. \n')
+
+            else:
+                semantic_result = 'rush'
+                print('LT vehicle rushed. \n')
+        else:
+            pos_y_smaller = pos_delta[pos_delta[:, 1] < 0]
+            if np.size(pos_y_smaller, 0):
+                semantic_result = 'rush'
+                print('LT vehicle rushed. \n')
+            else:
+                semantic_result = 'unfinished'
+                print('interaction is not finished. \n')
+
+    return semantic_result
+
 
 def main1():
     """
@@ -462,7 +571,8 @@ def main1():
     simu.sim_type = 'simu'
     simu.initialize(simu_scenario, tag)
     simu.interact(simu_step=10)
-    simu.get_semantic_result()
+    simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory,
+                                               simu.agent_gs.observed_trajectory)
     simu.visualize()
 
 
@@ -474,20 +584,25 @@ def main2():
            * 'gt' is the game-theoretic planner work by solving IBR process
            * 'opt' is the optimal controller work by solving single optimization
        """
-    tag = 'nds-simu-case71'
 
-    simu = Simulator(case_id=71)
+    # for case_id in range(130):
+    case_id = 123
+    tag = 'nds-simu-case' + str(case_id)
+
+    simu = Simulator(case_id=case_id)
     simu.sim_type = 'nds'
-    controller_type_lt = 'gt'
-    controller_type_gs = 'gt'
+    controller_type_lt = 'opt'
+    controller_type_gs = 'opt'
     simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
     if simu_scenario:
         simu.initialize(simu_scenario, tag)
         simu.agent_gs.target = 'gs_nds'
         simu.agent_lt.target = 'lt_nds'
-        simu.interact(simu_step=1, make_video=False, break_when_finish=False)
-        simu.get_semantic_result()
+        simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+        simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
+                                                   simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
         simu.visualize()
+        simu.save_metadata()
 
 
 def main_test():
@@ -509,7 +624,8 @@ def main_test():
         simu.agent_lt.target = 'lt_nds'
         # simu.agent_gs.ipv = math.pi/4
         simu.interact(simu_step=15, make_video=False)
-        simu.get_semantic_result()
+        simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory,
+                                                   simu.agent_gs.observed_trajectory)
         simu.ipv_analysis()
         simu.visualize()
 
