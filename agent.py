@@ -130,6 +130,79 @@ class Agent:
         self.estimated_inter_agent.solve_optimization(self.trj_solution)
         self.solve_optimization(self.estimated_inter_agent.trj_solution)
 
+    def idm_plan(self, inter_agent):
+
+        # get central vertices
+        cv, s_accumu = get_central_vertices(cv_type=self.target, origin_point=self.observed_trajectory[0, 0:2])
+        cv_inter, s_accumu_inter = get_central_vertices(cv_type=inter_agent.target,
+                                                        origin_point=inter_agent.observed_trajectory[0, 0:2])
+
+        # plt.plot(cv[:,0],cv[:,1])
+        # plt.plot(cv_inter[:,0], cv_inter[:,1])
+        # plt.show()
+
+        "find the conflict point"
+        conflict_point_str = get_intersection_point(cv, cv_inter)
+        conflict_point = np.array(conflict_point_str)
+        if conflict_point_str.is_empty:  # there is no intersection between given polylines
+            min_dis = 99
+            min_dis2cv_index_a = None
+            min_dis2cv_index_b = 0
+            for i in range(np.size(cv, 0)):
+                point_b = cv[i, :]
+                dis2cv_lt_temp = np.linalg.norm(cv_inter - point_b, axis=1)
+                min_dis2cv_temp = np.amin(dis2cv_lt_temp)
+                min_dis2cv_index_temp = np.where(min_dis2cv_temp == dis2cv_lt_temp)
+                if min_dis2cv_temp < min_dis:
+                    min_dis = min_dis2cv_temp
+                    min_dis2cv_index_a = min_dis2cv_index_temp[0]
+                    min_dis2cv_index_b = i
+            conflict_point = (cv_inter[min_dis2cv_index_a[0], :] + cv[min_dis2cv_index_b, :]) / 2
+
+        "index of conflict point on each cv"
+        cp_index = get_index_on_cv(cv, conflict_point)
+        cp_index_inter = get_index_on_cv(cv_inter, conflict_point)
+
+        "index of current position on cv"
+        pos_index = get_index_on_cv(cv, self.position)
+        pos_index_inter = get_index_on_cv(cv_inter, inter_agent.position)
+
+        "lateral distance to conflict point"
+        dis2cp = s_accumu[cp_index] - s_accumu[pos_index]
+        dis2cp = dis2cp[0]
+        dis2cp_inter = s_accumu_inter[cp_index_inter] - s_accumu_inter[pos_index_inter]
+        dis2cp_inter = dis2cp_inter[0]
+
+        if (dis2cp < 0 or dis2cp_inter < 0) or dis2cp < dis2cp_inter:  # passed the conflict point
+            vel_temp = np.linalg.norm(self.velocity) + 0.1
+        else:
+            idm_param = [1.5, 1.5, 1.5, 2, 30]
+            vel = np.linalg.norm(self.velocity)
+            vel_rela = vel - np.linalg.norm(inter_agent.velocity)
+            dis_rela = dis2cp - dis2cp_inter
+            acc = idm_model(idm_param, vel, vel_rela, dis_rela)
+            vel_temp = vel + acc * dt
+
+        lat_dis_new = s_accumu[pos_index] + vel_temp * dt
+        new_pos2cv = np.abs(s_accumu - lat_dis_new)
+        min_dis2cv = np.amin(new_pos2cv)
+        new_pos_index = np.where(min_dis2cv == new_pos2cv)
+        new_position = cv[new_pos_index, :]
+        new_position = new_position[0, 0, :]
+        new_heading = - math.atan((cv[new_pos_index[0], 1] - cv[new_pos_index[0] - 1, 1]) /
+                                  (cv[new_pos_index[0], 0] - cv[new_pos_index[0] - 1, 0]))
+        new_velocity = [vel_temp * math.cos(new_heading), vel_temp * math.sin(new_heading)]
+        self.trj_solution = np.array([[self.position[0],
+                                       self.position[1],
+                                       self.velocity[0],
+                                       self.velocity[1],
+                                       self.heading],
+                                      [new_position[0],
+                                       new_position[1],
+                                       new_velocity[0],
+                                       new_velocity[1],
+                                       new_heading]])
+
     def update_state(self, inter_agent):
         self.position = self.trj_solution[1, 0:2]
         self.velocity = self.trj_solution[1, 2:4]
@@ -343,3 +416,26 @@ def cal_reliability(inter_track, act_track, vir_track_coll, target):
         weight = np.ones(candidates_num) / candidates_num
     # print(weight)
     return weight
+
+
+def get_index_on_cv(cv, point):
+    cp_on_trj = np.linalg.norm(cv - point, axis=1)
+    min_dcp2trj = np.amin(cp_on_trj)
+    index = np.where(min_dcp2trj == cp_on_trj)
+    return index[0]
+
+
+def idm_model(para, vel_self, vel_rel, gap):
+    akgs = vel_self * para[1] + vel_self * vel_rel / 2 / np.sqrt(para[2] * para[3])
+    if akgs < 0:
+        sss = para[0]
+    else:
+        sss = para[0] + akgs
+
+    acc = para[2] * (1 - np.power((vel_self / para[4]), 4) - np.power((sss / gap), 2))
+    if acc > 5:
+        acc = 5
+    if acc < -5:
+        acc = -5
+
+    return acc

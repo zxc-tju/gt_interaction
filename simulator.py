@@ -83,6 +83,9 @@ class Simulator:
             elif self.agent_lt.conl_type in {'opt'}:
                 self.agent_lt.opt_plan()
 
+            elif self.agent_lt.conl_type in {'idm'}:
+                self.agent_lt.idm_plan(self.agent_gs)
+
             elif self.agent_lt.conl_type in {'replay'}:
                 t_end = t + self.agent_lt.track_len
                 self.agent_lt.trj_solution = self.lt_actual_trj[t:t_end, :]
@@ -110,6 +113,9 @@ class Simulator:
 
             elif self.agent_gs.conl_type in {'opt'}:
                 self.agent_gs.opt_plan()
+
+            elif self.agent_gs.conl_type in {'idm'}:
+                self.agent_gs.idm_plan(self.agent_lt)
 
             elif self.agent_gs.conl_type in {'replay'}:
                 track_len = self.agent_gs.track_len
@@ -414,7 +420,7 @@ class Simulator:
         #                  color='red',
         #                  label='estimated gs IPV')
 
-    def save_metadata(self):
+    def save_metadata(self, sheet_name):
         """
 
         Returns
@@ -519,7 +525,7 @@ class Simulator:
 
         with pd.ExcelWriter('outputs/meta_data.xlsx', mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
             df.to_excel(writer, header=header_flag, index=False,
-                        sheet_name='nds simulation',
+                        sheet_name=sheet_name,
                         startcol=0, startrow=start_row)
 
 
@@ -652,22 +658,26 @@ def main2():
     # case_id = 0
     for case_id in range(130):
 
-        tag = 'nds-simu-case' + str(case_id)
+        tag = 'nds-simu-idm' + str(case_id)
+
+        print('start case:' + tag)
 
         simu = Simulator(case_id=case_id)
         simu.sim_type = 'nds'
-        controller_type_lt = 'opt'
-        controller_type_gs = 'opt'
+        controller_type_lt = 'idm'
+        controller_type_gs = 'idm'
         simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
         if simu_scenario:
             simu.initialize(simu_scenario, tag)
             simu.agent_gs.target = 'gs_nds'
+            simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
             simu.agent_lt.target = 'lt_nds'
+            simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
             simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
             simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                        simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
             simu.visualize()
-            simu.save_metadata()
+            simu.save_metadata(sheet_name='idm simulation')
 
 
 def main_test():
