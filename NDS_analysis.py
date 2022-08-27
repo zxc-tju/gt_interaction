@@ -7,9 +7,9 @@ import pandas as pd
 from datetime import datetime
 import xlsxwriter
 
-illustration_needed = False
+illustration_needed = True
 print_needed = False
-save_data_needed = True
+save_data_needed = False
 # load data
 mat = scipy.io.loadmat('./data/NDS_data_fixed.mat')
 # full interaction information
@@ -205,7 +205,8 @@ def cal_pet(trj_a, trj_b, type_cal):
     ttcp_b = dis2conf_b[:-1] / vel_b
 
     solid_len = min(np.size(ttcp_a[ttcp_a > 0], 0), np.size(ttcp_b[ttcp_b > 0], 0))
-
+    if solid_len == 0:
+        solid_len = 1
     "PET and APET"
     apet = np.abs(ttcp_a[:solid_len] - ttcp_b[:solid_len])
 
@@ -218,3 +219,222 @@ def cal_pet(trj_a, trj_b, type_cal):
     elif type_cal == 'apet':
 
         return apet, ttcp_a, ttcp_b
+
+
+def analyze_nds(case_id):
+    """
+    estimate IPV in natural driving data and write results into excels
+    :param case_id:
+    :return:
+    """
+    output_path = 'outputs/ipv_estimation/'
+
+    inter_o, inter_d = find_inter_od(case_id)
+    case_info = inter_info[case_id]
+    lt_info = case_info[0]
+
+    # find co-present gs agents (not necessarily interacting)
+    gs_info_multi = case_info[1:inter_num[0, case_id] + 1]
+
+    # initialize IPV
+    start_time = 0
+    ipv_collection = np.zeros_like(lt_info[:, 0:2])
+    ipv_error_collection = np.ones_like(lt_info[:, 0:2])
+
+    # set figure
+    if illustration_needed:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[16, 8])
+
+    inter_id = 0
+    inter_id_save = inter_id
+    file_name = output_path + str(case_id) + '.xlsx'
+
+    for t in range(np.size(lt_info, 0)):
+
+        "find current interacting agent"
+        flag = 0
+        for i in range(np.size(gs_info_multi, 0)):
+            if inter_o[i] <= t < inter_d[i]:  # switch to next interacting agent
+                # update interaction info
+                flag = 1
+                inter_id = i
+                if print_needed:
+                    print('inter_id', inter_id)
+                start_time = max(int(inter_o[inter_id]), t - 10)
+
+        # save data of last one
+        if save_data_needed:
+            if inter_id_save < inter_id or t == inter_d[-1]:
+                # if inter_d[inter_id_save] - inter_o[inter_id_save] > 3:
+                '''
+                inter_id_save < inter_id：  interacting agent changed
+                t == inter_d[-1]:  end frame of the last agent
+                inter_d[inter_id_save]-inter_o[inter_id_save] > 3：  interacting period is long enough
+                '''
+                # save data into an excel with the format of:
+                # 0-ipv_lt | ipv_lt_error | lt_px | lt_py  | lt_vx  | lt_vy  | lt_heading  |...
+                # 7-ipv_gs | ipv_gs_error | gs_px | gs_py  | gs_vx  | gs_vy  | gs_heading  |
+
+                df_ipv_lt = pd.DataFrame(ipv_collection[int(inter_o[inter_id_save]): int(inter_d[inter_id_save]), 0],
+                                         columns=["ipv_lt"])
+                df_ipv_lt_error = pd.DataFrame(
+                    ipv_error_collection[int(inter_o[inter_id_save]): int(inter_d[inter_id_save]), 0],
+                    columns=["ipv_lt_error"])
+                df_motion_lt = pd.DataFrame(lt_info[int(inter_o[inter_id_save]): int(inter_d[inter_id_save]), 0:5],
+                                            columns=["lt_px", "lt_py", "lt_vx", "lt_vy", "lt_heading"])
+
+                df_ipv_gs = pd.DataFrame(ipv_collection[int(inter_o[inter_id_save]): int(inter_d[inter_id_save]), 1],
+                                         columns=["ipv_gs"])
+                df_ipv_gs_error = pd.DataFrame(
+                    ipv_error_collection[int(inter_o[inter_id_save]): int(inter_d[inter_id_save]), 1],
+                    columns=["ipv_gs_error"])
+                df_motion_gs = pd.DataFrame(gs_info_multi[inter_id_save]
+                                            [int(inter_o[inter_id_save]): int(inter_d[inter_id_save]), 0:5],
+                                            columns=["gs_px", "gs_py", "gs_vx", "gs_vy", "gs_heading"])
+
+                if inter_id_save == 0:
+                    with pd.ExcelWriter(file_name) as writer:
+                        df_ipv_lt.to_excel(writer, startcol=0, index=False, sheet_name=str(inter_id_save))
+                        df_ipv_lt_error.to_excel(writer, startcol=1, index=False, sheet_name=str(inter_id_save))
+                        df_motion_lt.to_excel(writer, startcol=2, index=False, sheet_name=str(inter_id_save))
+
+                        df_ipv_gs.to_excel(writer, startcol=7, index=False, sheet_name=str(inter_id_save))
+                        df_ipv_gs_error.to_excel(writer, startcol=8, index=False, sheet_name=str(inter_id_save))
+                        df_motion_gs.to_excel(writer, startcol=9, index=False, sheet_name=str(inter_id_save))
+                else:
+                    with pd.ExcelWriter(file_name, mode="a", if_sheet_exists="overlay") as writer:
+                        df_ipv_lt.to_excel(writer, startcol=0, index=False, sheet_name=str(inter_id_save))
+                        df_ipv_lt_error.to_excel(writer, startcol=1, index=False, sheet_name=str(inter_id_save))
+                        df_motion_lt.to_excel(writer, startcol=2, index=False, sheet_name=str(inter_id_save))
+
+                        df_ipv_gs.to_excel(writer, startcol=7, index=False, sheet_name=str(inter_id_save))
+                        df_ipv_gs_error.to_excel(writer, startcol=8, index=False, sheet_name=str(inter_id_save))
+                        df_motion_gs.to_excel(writer, startcol=9, index=False, sheet_name=str(inter_id_save))
+
+                inter_id_save = inter_id
+
+        "IPV estimation process"
+        if flag and (t - start_time > 3):
+
+            "====simulation-based method===="
+            # generate two agents
+            init_position_lt = lt_info[start_time, 0:2] - [13, 7.8]
+            init_velocity_lt = lt_info[start_time, 2:4]
+            init_heading_lt = lt_info[start_time, 4]
+            agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt_nds')
+            lt_track = lt_info[start_time:t + 1, 0:2]
+            lt_track = lt_track - np.repeat([[13, 7.8]], np.size(lt_track, 0), axis=0)
+
+            init_position_gs = gs_info_multi[inter_id][start_time, 0:2] - [13, 7.8]
+            init_velocity_gs = gs_info_multi[inter_id][start_time, 2:4]
+            init_heading_gs = gs_info_multi[inter_id][start_time, 4]
+            agent_gs = Agent(init_position_gs, init_velocity_gs, init_heading_gs, 'gs_nds')
+            gs_track = gs_info_multi[inter_id][start_time:t + 1, 0:2]
+            gs_track = gs_track - np.repeat([[13, 7.8]], np.size(gs_track, 0), axis=0)
+
+            # estimate ipv
+            agent_lt.estimate_self_ipv_in_NDS(lt_track, gs_track)
+            ipv_collection[t, 0] = agent_lt.ipv
+            ipv_error_collection[t, 0] = agent_lt.ipv_error
+
+            agent_gs.estimate_self_ipv_in_NDS(gs_track, lt_track)
+            ipv_collection[t, 1] = agent_gs.ipv
+            ipv_error_collection[t, 1] = agent_gs.ipv_error
+
+            if print_needed:
+                print('left turn', agent_lt.ipv, agent_lt.ipv_error)
+                print('go straight', agent_gs.ipv, agent_gs.ipv_error)
+            "====end of simulation-based method===="
+
+            "====cost-based method===="
+            # load observed trajectories
+            # lt_track_observed = lt_info[start_time:t + 1, 0:2]
+            # gs_track_observed = gs_info_multi[inter_id][start_time:t + 1, 0:2]
+            #
+            # # cost results in observation
+            # interior_cost_lt = cal_interior_cost([], lt_track_observed, 'lt_nds')
+            # interior_cost_gs = cal_interior_cost([], gs_track_observed, 'gs_nds')
+            # group_cost_lt = cal_group_cost([lt_track_observed, gs_track_observed])
+            # group_cost_gs = cal_group_cost([gs_track_observed, lt_track_observed])
+            #
+            # ipv_collection[t, 0] =
+            # ipv_collection[t, 1] =
+            "====end of cost-based method===="
+
+            "illustration"
+            if illustration_needed:
+                ax1.cla()
+                ax1.set(ylim=[-2, 2])
+
+                x_range = range(max(0, t - 10), t)
+                smoothed_ipv_lt, _ = smooth_ployline(np.array([x_range, ipv_collection[x_range, 0]]).T)
+                smoothed_ipv_error_lt, _ = smooth_ployline(np.array([x_range, ipv_error_collection[x_range, 0]]).T)
+                smoothed_x = smoothed_ipv_lt[:, 0]
+                # plot ipv
+                ax1.plot(smoothed_x, smoothed_ipv_lt[:, 1], 'blue')
+                # plot error bar
+                ax1.fill_between(smoothed_x, smoothed_ipv_lt[:, 1] - smoothed_ipv_error_lt[:, 1],
+                                 smoothed_ipv_lt[:, 1] + smoothed_ipv_error_lt[:, 1],
+                                 alpha=0.4,
+                                 color='blue',
+                                 label='estimated lt IPV')
+
+                smoothed_ipv_gs, _ = smooth_ployline(np.array([x_range, ipv_collection[x_range, 1]]).T)
+                smoothed_ipv_error_gs, _ = smooth_ployline(np.array([x_range, ipv_error_collection[x_range, 1]]).T)
+                # plot ipv
+                ax1.plot(smoothed_x, smoothed_ipv_gs[:, 1], 'red')
+                # plot error bar
+                ax1.fill_between(smoothed_x, smoothed_ipv_gs[:, 1] - smoothed_ipv_error_gs[:, 1],
+                                 smoothed_ipv_gs[:, 1] + smoothed_ipv_error_gs[:, 1],
+                                 alpha=0.4,
+                                 color='red',
+                                 label='estimated gs IPV')
+                ax1.legend()
+
+                # show trajectory and plans
+                ax2.cla()
+                ax2.set(xlim=[-22 - 13, 53 - 13], ylim=[-31 - 7.8, 57 - 7.8])
+                img = plt.imread('background_pic/Jianhexianxia-v2.png')
+                ax2.imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
+                cv1, _ = get_central_vertices('lt_nds', [lt_info[start_time, 0]-13, lt_info[start_time, 1]-7.8])
+                cv2, _ = get_central_vertices('gs_nds', [gs_info_multi[inter_id][start_time, 0]-13,
+                                                         gs_info_multi[inter_id][start_time, 1]-7.8])
+                ax2.plot(cv1[:, 0], cv1[:, 1])
+                ax2.plot(cv2[:, 0], cv2[:, 1])
+
+                # actual track
+                ax2.scatter(lt_info[start_time:t, 0]-13, lt_info[start_time:t, 1]-7.8,
+                            s=50,
+                            alpha=0.5,
+                            color='blue',
+                            label='left-turn')
+                candidates_lt = agent_lt.virtual_track_collection
+                for track_lt in candidates_lt:
+                    ax2.plot(track_lt[:, 0], track_lt[:, 1], color='green', alpha=0.5)
+                ax2.scatter(gs_info_multi[inter_id][start_time:t, 0]-13, gs_info_multi[inter_id][start_time:t, 1]-7.8,
+                            s=50,
+                            alpha=0.5,
+                            color='red',
+                            label='go-straight')
+                candidates_gs = agent_gs.virtual_track_collection
+                for track_gs in candidates_gs:
+                    ax2.plot(track_gs[:, 0], track_gs[:, 1], color='green', alpha=0.5)
+                ax2.legend()
+
+                plt.pause(0.3)
+
+        elif inter_id is None:
+            if print_needed:
+                print('no interaction')
+
+        elif t - start_time < 3:
+            if print_needed:
+                print('no results, more observation needed')
+
+
+if __name__ == '__main__':
+    "calculate ipv in NDS"
+    # estimate IPV in natural driving data and write results into excels (along with all agents' motion info)
+    # for case_index in range(130):
+    #     analyze_nds(case_index)
+    analyze_nds(30)

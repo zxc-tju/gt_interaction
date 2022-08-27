@@ -1,10 +1,11 @@
 """
 Agents for interaction simulations
 """
+import matplotlib.pyplot as plt
 import numpy as np
 import math
 from scipy.optimize import minimize
-from tools.utility import get_central_vertices, kinematic_model
+from tools.utility import get_central_vertices, kinematic_model, get_intersection_point
 import copy
 
 # simulation setting
@@ -20,11 +21,11 @@ weight_metric = weight_metric / weight_metric.sum()
 
 # weight of interior and group cost
 WEIGHT_INT = 1
-WEIGHT_GRP = 0.22
+WEIGHT_GRP = 0.4
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
-MAX_ACCELERATION = 1.0
+MAX_ACCELERATION = 3.0
 
 # initial guess on interacting agent's IPV
 INITIAL_IPV_GUESS = 0
@@ -32,7 +33,7 @@ virtual_agent_IPV_range = np.array([-3, -2, -1, 0, 1, 2, 3]) * math.pi / 8
 
 # likelihood function
 sigma = 0.02
-sigma2 = 0.4
+sigma2 = 0.05
 
 
 class Agent:
@@ -260,6 +261,32 @@ class Agent:
 
         # calculate reliability of each track
         ipv_weight = cal_reliability([],
+                                     self_actual_track,
+                                     self.virtual_track_collection,
+                                     self.target)
+
+        # weighted sum of all candidates' IPVs
+        self.ipv = sum(ipv_range * ipv_weight)
+        self.ipv_error = 1 - np.sqrt(sum(ipv_weight ** 2))
+
+        # # save updated ipv and estimation error
+        # self.ipv_collection.append(self.ipv)
+        # self.ipv_error_collection.append(self.ipv_error)
+
+    def estimate_self_ipv_in_NDS(self, self_actual_track, inter_track):
+        self_virtual_track_collection = []
+        # ipv_range = np.random.normal(self.ipv, math.pi/6, 6)
+        ipv_range = virtual_agent_IPV_range
+        for ipv_temp in ipv_range:
+            agent_self_temp = copy.deepcopy(self)
+            agent_self_temp.ipv = ipv_temp
+            # generate track with varied ipv
+            virtual_track_temp = agent_self_temp.solve_optimization(inter_track)
+            # save track into a collection
+            self.virtual_track_collection.append(virtual_track_temp[:, 0:2])
+
+        # calculate reliability of each track
+        ipv_weight = cal_reliability(inter_track,
                                      self_actual_track,
                                      self.virtual_track_collection,
                                      self.target)
