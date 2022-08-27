@@ -700,9 +700,9 @@ class LocalPlanner:
                             if Dist(obstacle.x, obstacle.y, traj_point.x, traj_point.y) > sight_range:
                                 # 只看眼前一段距离
                                 continue
-                            plt.gca().add_patch(
-                                plt.Rectangle((obstacle.corner[0], obstacle.corner[1]), obstacle.length, obstacle.width,
-                                              color='y', angle=obstacle.heading * 180 / M_PI))
+                            # plt.gca().add_patch(
+                            #     plt.Rectangle((obstacle.corner[0], obstacle.corner[1]), obstacle.length, obstacle.width,
+                            #                   color='y', angle=obstacle.heading * 180 / M_PI))
                             temp = TrajObsFree(tp_all, obstacle, delta_t)
                             if not temp[1]:  # 有碰撞
                                 colli = 1
