@@ -69,6 +69,7 @@ class Simulator:
             _, ax = plt.subplots()
 
         for t in range(self.num_step):
+
             print('time_step: ', t, '/', self.num_step)
 
             "==plan for left-turn=="
@@ -183,7 +184,7 @@ class Simulator:
         cv_lt = []
         cv_gs = []
         # set figures
-        fig, axes = plt.subplots(1, 2, figsize=[16, 8])
+        fig, axes = plt.subplots(2, figsize=[16, 8])
         fig.suptitle('trajectory_LT_' + self.semantic_result)
         axes[0].set_title('trajectory')
         axes[1].set_title('velocity')
@@ -420,7 +421,7 @@ class Simulator:
         #                  color='red',
         #                  label='estimated gs IPV')
 
-    def save_metadata(self, sheet_name):
+    def save_metadata(self, file_name, sheet_name):
         """
 
         Returns
@@ -462,11 +463,11 @@ class Simulator:
         mean_vel_nds_gs = vel_nds_vel_norm_gs.mean()
         # 7
         vel_rmsne_lt = np.sqrt(
-            (((vel_ob_vel_norm_lt-vel_nds_vel_norm_lt)/vel_nds_vel_norm_lt) ** 2).sum()
+            (((vel_ob_vel_norm_lt - vel_nds_vel_norm_lt) / vel_nds_vel_norm_lt) ** 2).sum()
             / np.size(vel_ob_vel_norm_lt, 0))
         # 8
         vel_rmsne_gs = np.sqrt(
-            (((vel_ob_vel_norm_gs-vel_nds_vel_norm_gs)/vel_nds_vel_norm_gs) ** 2).sum()
+            (((vel_ob_vel_norm_gs - vel_nds_vel_norm_gs) / vel_nds_vel_norm_gs) ** 2).sum()
             / np.size(vel_ob_vel_norm_gs, 0))
 
         # ----position deviation
@@ -521,9 +522,9 @@ class Simulator:
             start_row = 0
         else:
             header_flag = False
-            start_row = case_id+1
+            start_row = case_id + 1
 
-        with pd.ExcelWriter('outputs/meta_data.xlsx', mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
+        with pd.ExcelWriter(file_name, mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
             df.to_excel(writer, header=header_flag, index=False,
                         sheet_name=sheet_name,
                         startcol=0, startrow=start_row)
@@ -677,7 +678,7 @@ def main2():
             simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                        simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
             simu.visualize()
-            simu.save_metadata(sheet_name='idm simulation')
+            simu.save_metadata(file_name='outputs/meta_data.xlsx', sheet_name='idm simulation')
 
 
 def main_test():
@@ -686,23 +687,29 @@ def main_test():
         * set lt agent as the vehicle under test (ipv=pi/4)
     """
 
-    tag = 'gt-test'
+    # case_id = 40
+    for case_id in range(130):
 
-    simu = Simulator(case_id=51)
-    simu.sim_type = 'nds'
-    controller_type_lt = 'lattice'
-    controller_type_gs = 'gt'
-    simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
-    if simu_scenario:
-        simu.initialize(simu_scenario, tag)
-        simu.agent_gs.target = 'gs_nds'
-        simu.agent_lt.target = 'lt_nds'
-        # simu.agent_gs.ipv = math.pi/4
-        simu.interact(simu_step=15, make_video=False)
-        simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory,
-                                                   simu.agent_gs.observed_trajectory)
-        simu.ipv_analysis()
-        simu.visualize()
+        tag = 'opt-test-lt-lattice' + str(case_id)
+        print('start case:' + tag)
+
+        simu = Simulator(case_id=case_id)
+        simu.sim_type = 'nds'
+        controller_type_lt = 'lattice'
+        controller_type_gs = 'opt'
+        simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
+        if simu_scenario:
+            simu.initialize(simu_scenario, tag)
+            simu.agent_gs.target = 'gs_nds'
+            simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
+            simu.agent_lt.target = 'lt_nds'
+            simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
+            # simu.agent_gs.ipv = math.pi/4
+            simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+            simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
+                                                       simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
+            simu.visualize()
+            simu.save_metadata(file_name='outputs/test_meta_data.xlsx', sheet_name='opt test lt-lattice')
 
 
 if __name__ == '__main__':
@@ -710,7 +717,7 @@ if __name__ == '__main__':
     # main1()
 
     'simulate with nds data from Jianhe-Xianxia intersection'
-    main2()
+    # main2()
 
     'test lattice planner with trajectory replay'
-    # main_test()
+    main_test()
