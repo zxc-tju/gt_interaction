@@ -70,7 +70,7 @@ class Simulator:
 
         for t in range(self.num_step):
 
-            print('time_step: ', t, '/', self.num_step)
+            # print('time_step: ', t, '/', self.num_step)
 
             "==plan for left-turn=="
             if self.agent_lt.conl_type in {'gt'}:
@@ -184,7 +184,7 @@ class Simulator:
         cv_lt = []
         cv_gs = []
         # set figures
-        fig, axes = plt.subplots(2, figsize=[16, 8])
+        fig, axes = plt.subplots(1, 2, figsize=[16, 8])
         fig.suptitle('trajectory_LT_' + self.semantic_result)
         axes[0].set_title('trajectory')
         axes[1].set_title('velocity')
@@ -421,7 +421,7 @@ class Simulator:
         #                  color='red',
         #                  label='estimated gs IPV')
 
-    def save_metadata(self, file_name, sheet_name):
+    def save_metadata(self, num_failed, file_name, sheet_name):
         """
 
         Returns
@@ -489,13 +489,13 @@ class Simulator:
         # 13
         min_apet_nds = apet_nds.min()
         # 14
-        mean_apet_nds = apet_nds.mean()
+        mean_apet_nds = min(apet_nds.mean(), 15)
 
         apet_simu, _, _ = cal_pet(ob_trj_lt, ob_trj_gs, type_cal='apet')
         # 15
         min_apet_simu = apet_simu.min()
         # 16
-        mean_apet_simu = apet_simu.mean()
+        mean_apet_simu = min(apet_simu.mean(), 15)
 
         "---- sava data ----"
         # prepare data
@@ -527,7 +527,7 @@ class Simulator:
         with pd.ExcelWriter(file_name, mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
             df.to_excel(writer, header=header_flag, index=False,
                         sheet_name=sheet_name,
-                        startcol=0, startrow=start_row)
+                        startcol=0, startrow=start_row-num_failed)
 
 
 def get_semantic_result(track_lt, track_gs, case_type='simu'):
@@ -657,7 +657,7 @@ def main2():
        """
 
     # case_id = 0
-    for case_id in range(130):
+    for case_id in range(4, 130):
 
         tag = 'nds-simu-idm' + str(case_id)
 
@@ -678,7 +678,7 @@ def main2():
             simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                        simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
             simu.visualize()
-            simu.save_metadata(file_name='outputs/meta_data.xlsx', sheet_name='idm simulation')
+            simu.save_metadata(0, file_name='outputs/meta_data.xlsx', sheet_name='idm simulation')
 
 
 def main_test():
@@ -688,28 +688,39 @@ def main_test():
     """
 
     # case_id = 40
+    num_failed = 0
     for case_id in range(130):
+        if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
+            continue
+        else:
+            tag = 'opt-test-gs-lattice' + str(case_id)
+            print('start case:' + tag)
 
-        tag = 'opt-test-lt-lattice' + str(case_id)
-        print('start case:' + tag)
-
-        simu = Simulator(case_id=case_id)
-        simu.sim_type = 'nds'
-        controller_type_lt = 'lattice'
-        controller_type_gs = 'opt'
-        simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
-        if simu_scenario:
-            simu.initialize(simu_scenario, tag)
-            simu.agent_gs.target = 'gs_nds'
-            simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
-            simu.agent_lt.target = 'lt_nds'
-            simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
-            # simu.agent_gs.ipv = math.pi/4
-            simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
-            simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
-                                                       simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
-            simu.visualize()
-            simu.save_metadata(file_name='outputs/test_meta_data.xlsx', sheet_name='opt test lt-lattice')
+            simu = Simulator(case_id=case_id)
+            simu.sim_type = 'nds'
+            controller_type_lt = 'opt'
+            controller_type_gs = 'lattice'
+            simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
+            if simu_scenario:
+                simu.initialize(simu_scenario, tag)
+                simu.agent_gs.target = 'gs_nds'
+                simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
+                simu.agent_lt.target = 'lt_nds'
+                simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
+                # simu.agent_gs.ipv = math.pi/4
+                try:
+                    simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+                    simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
+                                                               simu.agent_gs.observed_trajectory[:, 0:2],
+                                                               case_type='nds')
+                    # simu.visualize()
+                    simu.save_metadata(num_failed,
+                                       file_name='outputs/test_meta_data20220828.xlsx',
+                                       sheet_name='opt test gs-lattice')
+                except IndexError:
+                    print('# ====Failed:' + tag + '==== #')
+                    num_failed += 1
+                    continue
 
 
 if __name__ == '__main__':
