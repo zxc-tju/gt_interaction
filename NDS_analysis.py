@@ -432,9 +432,73 @@ def analyze_nds(case_id):
                 print('no results, more observation needed')
 
 
+def visualize_nds(case_id):
+    # abstract interaction info. of a given case
+    case_info = inter_info[case_id]
+    # left-turn vehicle
+    lt_info = case_info[0]
+    # go-straight vehicles
+    gs_info_multi = case_info[1:inter_num[0, case_id] + 1]
+
+    fig, ax1 = plt.subplots(1, figsize=[8, 8])
+
+    for t in range(np.size(lt_info, 0)):
+        t_end = t + 10
+        ax1.cla()
+        ax1.set(xlim=[-22, 53], ylim=[-31, 57])
+        img = plt.imread('background_pic/Jianhexianxia-v2.png')
+        ax1.imshow(img, extent=[-22, 53, -31, 57])
+        plt.text(-10, 60, 'T=' + str(t), fontsize=30)
+
+        # position of go-straight vehicles
+        for gs_id in range(np.size(gs_info_multi, 0)):
+            if np.size(gs_info_multi[gs_id], 0) > t and not gs_info_multi[gs_id][t, 0] == 0:
+                # position
+                ax1.scatter(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
+                            s=120,
+                            alpha=0.9,
+                            color='red',
+                            label='go-straight')
+                # future track
+                t_end_gs = min(t + 10, np.size(gs_info_multi[gs_id], 0))
+                ax1.plot(gs_info_multi[gs_id][t:t_end_gs, 0], gs_info_multi[gs_id][t:t_end_gs, 1],
+                         alpha=0.8,
+                         color='red')
+
+        # position of left-turn vehicle
+        ax1.scatter(lt_info[t, 0], lt_info[t, 1],
+                    s=120,
+                    alpha=0.9,
+                    color='blue',
+                    label='left-turn')
+        # future track
+        ax1.plot(lt_info[t:t_end, 0], lt_info[t:t_end, 1],
+                 alpha=0.8,
+                 color='blue')
+        # ax1.legend()
+        plt.pause(0.1)
+
+    # # show full track of all agents
+    # ax2.plot(lt_info[:, 0], lt_info[:, 1],
+    #          alpha=0.8,
+    #          color='blue')
+    # for gs_id in range(np.size(gs_info_multi, 0)):
+    #     # find solid frames
+    #     frames = np.where(gs_info_multi[gs_id][:, 0] < 1e-3)
+    #     # the first solid frame id
+    #     frame_start = len(frames[0])
+    #     # tracks
+    #     ax2.plot(gs_info_multi[gs_id][frame_start:, 0], gs_info_multi[gs_id][frame_start:, 1],
+    #              alpha=0.8,
+    #              color='red')
+    # plt.show()
+
+
 if __name__ == '__main__':
     "calculate ipv in NDS"
     # estimate IPV in natural driving data and write results into excels (along with all agents' motion info)
     # for case_index in range(130):
     #     analyze_nds(case_index)
-    analyze_nds(30)
+    # analyze_nds(30)
+
+    visualize_nds(1)
