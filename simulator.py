@@ -179,7 +179,7 @@ class Simulator:
                     self.num_step = t + 1
                     break
 
-    def visualize(self):
+    def visualize(self, file_path):
 
         cv_lt = []
         cv_gs = []
@@ -297,7 +297,7 @@ class Simulator:
         axes[1].legend()
         axes[0].legend()
         plt.show()
-        plt.savefig('figures/' + self.tag + '-final.png', dpi=600)
+        plt.savefig(file_path + self.tag + '-final.png', dpi=600)
         plt.close()
 
     def read_nds_scenario(self, controller_type_lt, controller_type_gs):
@@ -315,7 +315,8 @@ class Simulator:
             if controller_type_lt in {'opt', 'gt'}:
                 ipv_weight_lt = 1 - data_cross[4:, 1]
                 ipv_weight_lt = ipv_weight_lt / ipv_weight_lt.sum()
-                ipv_lt = sum(ipv_weight_lt * data_cross[4:, 0])
+                # ipv_lt = sum(ipv_weight_lt * data_cross[4:, 0])
+                ipv_lt = max(sum(ipv_weight_lt * data_cross[4:, 0])-0.1, -math.pi*3/8)
             else:
                 ipv_lt = 0
             init_position_gs = [data_cross[0, 9] - 13, data_cross[0, 10] - 7.8]
@@ -324,7 +325,8 @@ class Simulator:
             if controller_type_gs in {'opt', 'gt'}:
                 ipv_weight_gs = 1 - data_cross[4:, 8]
                 ipv_weight_gs = ipv_weight_gs / ipv_weight_gs.sum()
-                ipv_gs = sum(ipv_weight_gs * data_cross[4:, 7])
+                # ipv_gs = sum(ipv_weight_gs * data_cross[4:, 7])
+                ipv_gs = max(sum(ipv_weight_gs * data_cross[4:, 7])-0.1, -math.pi*3/8)
             else:
                 ipv_gs = 0
             self.lt_actual_trj = data_cross[:, 2:7]
@@ -462,12 +464,12 @@ class Simulator:
         # 6
         mean_vel_nds_gs = vel_nds_vel_norm_gs.mean()
         # 7
-        vel_rmsne_lt = np.sqrt(
-            (((vel_ob_vel_norm_lt - vel_nds_vel_norm_lt) / vel_nds_vel_norm_lt) ** 2).sum()
+        vel_rmse_lt = np.sqrt(
+            ((vel_ob_vel_norm_lt - vel_nds_vel_norm_lt) ** 2).sum()
             / np.size(vel_ob_vel_norm_lt, 0))
         # 8
-        vel_rmsne_gs = np.sqrt(
-            (((vel_ob_vel_norm_gs - vel_nds_vel_norm_gs) / vel_nds_vel_norm_gs) ** 2).sum()
+        vel_rmse_gs = np.sqrt(
+            ((vel_ob_vel_norm_gs - vel_nds_vel_norm_gs) ** 2).sum()
             / np.size(vel_ob_vel_norm_gs, 0))
 
         # ----position deviation
@@ -502,7 +504,7 @@ class Simulator:
         df = pd.DataFrame([[case_id, seman_right,
                             mean_vel_simu_lt, mean_vel_nds_lt,
                             mean_vel_simu_gs, mean_vel_nds_gs,
-                            vel_rmsne_lt, vel_rmsne_gs,
+                            vel_rmse_lt, vel_rmse_gs,
                             ave_pos_dev_lt, pos_rsme_lt,
                             ave_pos_dev_gs, pos_rsme_gs,
                             min_apet_nds, min_apet_simu,
@@ -510,7 +512,7 @@ class Simulator:
                           columns=['case id', 'semantic result',
                                    'simualtion velocity lt', 'nds velocity lt',
                                    'simualtion velocity gs', 'nds velocity gs',
-                                   'velocity RMSNE lt', 'velocity RMSNE gs',
+                                   'velocity RMSE lt', 'velocity RMSE gs',
                                    'average POS deviation lt', 'POS RSME lt',
                                    'average POS deviation gs', 'POS RSME gs',
                                    'MIN APET NDS', 'MIN APET SIMU',
@@ -527,7 +529,7 @@ class Simulator:
         with pd.ExcelWriter(file_name, mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
             df.to_excel(writer, header=header_flag, index=False,
                         sheet_name=sheet_name,
-                        startcol=0, startrow=start_row-num_failed)
+                        startcol=0, startrow=start_row - num_failed)
 
 
 def get_semantic_result(track_lt, track_gs, case_type='simu'):
@@ -542,7 +544,7 @@ def get_semantic_result(track_lt, track_gs, case_type='simu'):
 
     if min(dis_delta) < 1:
         semantic_result = 'crashed'
-        print('interaction is crashed. \n')
+        # print('interaction is crashed. \n')
     elif case_type == 'nds':
         pos_y_larger = pos_delta[pos_delta[:, 1] > 0]
         if np.size(pos_y_larger, 0):
@@ -559,19 +561,19 @@ def get_semantic_result(track_lt, track_gs, case_type='simu'):
                 ending_point = {'lt': track_lt[ind, :],
                                 'gs': track_gs[ind, :]}
 
-                print('LT vehicle yielded. \n')
+                # print('LT vehicle yielded. \n')
 
             else:
                 semantic_result = 'rush'
-                print('LT vehicle rushed. \n')
+                # print('LT vehicle rushed. \n')
         else:
             pos_x_smaller = pos_delta[pos_delta[:, 0] < -1]
             if np.size(pos_x_smaller, 0):
                 semantic_result = 'rush'
-                print('LT vehicle rushed. \n')
+                # print('LT vehicle rushed. \n')
             else:
                 semantic_result = 'unfinished'
-                print('interaction is not finished. \n')
+                # print('interaction is not finished. \n')
 
     else:  # case_type == 'simu'
         pos_x_smaller = pos_delta[pos_delta[:, 0] < 0]
@@ -589,19 +591,19 @@ def get_semantic_result(track_lt, track_gs, case_type='simu'):
                 ending_point = {'lt': track_lt[ind, :],
                                 'gs': track_gs[ind, :]}
 
-                print('LT vehicle yielded. \n')
+                # print('LT vehicle yielded. \n')
 
             else:
                 semantic_result = 'rush'
-                print('LT vehicle rushed. \n')
+                # print('LT vehicle rushed. \n')
         else:
             pos_y_smaller = pos_delta[pos_delta[:, 1] < 0]
             if np.size(pos_y_smaller, 0):
                 semantic_result = 'rush'
-                print('LT vehicle rushed. \n')
+                # print('LT vehicle rushed. \n')
             else:
                 semantic_result = 'unfinished'
-                print('interaction is not finished. \n')
+                # print('interaction is not finished. \n')
 
     return semantic_result
 
@@ -644,7 +646,7 @@ def main1():
     simu.interact(simu_step=10)
     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory,
                                                simu.agent_gs.observed_trajectory)
-    simu.visualize()
+    simu.visualize('./')
 
 
 def main2():
@@ -656,29 +658,50 @@ def main2():
            * 'opt' is the optimal controller work by solving single optimization
        """
 
-    # case_id = 0
-    for case_id in range(4, 130):
+    model_type = 'opt'
 
-        tag = 'nds-simu-idm' + str(case_id)
+    num_failed = 0
+    for case_id in range(130):
 
-        print('start case:' + tag)
+        if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
+            num_failed += 1
+            continue
+        else:
+            tag = 'simu-' + model_type + str(case_id)
 
-        simu = Simulator(case_id=case_id)
-        simu.sim_type = 'nds'
-        controller_type_lt = 'idm'
-        controller_type_gs = 'idm'
-        simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
-        if simu_scenario:
-            simu.initialize(simu_scenario, tag)
-            simu.agent_gs.target = 'gs_nds'
-            simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
-            simu.agent_lt.target = 'lt_nds'
-            simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
-            simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
-            simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
-                                                       simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
-            simu.visualize()
-            simu.save_metadata(0, file_name='outputs/meta_data.xlsx', sheet_name='idm simulation')
+            print('start case:' + tag)
+
+            simu = Simulator(case_id=case_id)
+            simu.sim_type = 'nds'
+            controller_type_lt = model_type
+            controller_type_gs = model_type
+            simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
+            if simu_scenario:
+                simu.initialize(simu_scenario, tag)
+                simu.agent_gs.target = 'gs_nds'
+                simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
+                simu.agent_lt.target = 'lt_nds'
+                simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
+                try:
+                    simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+                    simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
+                                                               simu.agent_gs.observed_trajectory[:, 0:2],
+                                                               case_type='nds')
+                    # simu.visualize()
+                    simu.save_metadata(num_failed,
+                                       file_name='outputs/simulation_meta_data20220831.xlsx',
+                                       sheet_name=model_type + ' simulation')
+                except IndexError:
+                    print('# ====Failed:' + tag + '==== #')
+                    num_failed += 1
+                    continue
+            else:
+                num_failed += 1
+                # simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+                # simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
+                #                                            simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
+                # simu.visualize()
+                # simu.save_metadata(0, file_name='outputs/meta_data.xlsx', sheet_name='idm simulation')
 
 
 def main_test():
@@ -687,18 +710,22 @@ def main_test():
         * set lt agent as the vehicle under test (ipv=pi/4)
     """
 
-    # case_id = 40
+    bg_type = 'opt'
+
     num_failed = 0
+
     for case_id in range(130):
+
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
+            num_failed += 1
             continue
         else:
-            tag = 'opt-test-gs-lattice' + str(case_id)
+            tag = bg_type + '-test-gs-lattice' + str(case_id)
             print('start case:' + tag)
 
             simu = Simulator(case_id=case_id)
             simu.sim_type = 'nds'
-            controller_type_lt = 'opt'
+            controller_type_lt = bg_type
             controller_type_gs = 'lattice'
             simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
             if simu_scenario:
@@ -713,14 +740,16 @@ def main_test():
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
-                    # simu.visualize()
+                    simu.visualize(file_path='figures/' + bg_type + ' test gs lattice/')
                     simu.save_metadata(num_failed,
                                        file_name='outputs/test_meta_data20220828.xlsx',
-                                       sheet_name='opt test gs-lattice')
+                                       sheet_name=bg_type + ' test gs-lattice')
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
                     num_failed += 1
                     continue
+            else:
+                num_failed += 1
 
 
 if __name__ == '__main__':

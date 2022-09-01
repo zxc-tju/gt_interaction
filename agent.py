@@ -21,11 +21,11 @@ weight_metric = weight_metric / weight_metric.sum()
 
 # weight of interior and group cost
 WEIGHT_INT = 1
-WEIGHT_GRP = 0.4
+WEIGHT_GRP = 0.22
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
-MAX_ACCELERATION = 3.0
+MAX_ACCELERATION = 1.0
 
 # initial guess on interacting agent's IPV
 INITIAL_IPV_GUESS = 0
