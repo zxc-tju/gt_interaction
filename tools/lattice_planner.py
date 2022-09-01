@@ -23,7 +23,7 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
     ry = path_data[:, 1]
     cts_points = np.array([rx, ry])
     path_points = CalcRefLine(cts_points)
-    obstacles = [Obstacle([obs_data['px'], obs_data['py'], 0, 10, 1.5, obs_data['heading']])]
+    obstacles = [Obstacle([obs_data['px'], obs_data['py'], 0, 1, 1.5, obs_data['heading']])]
     # obstacles = [Obstacle([obs_data['px'], obs_data['py'], obs_data['v'], 3, 1.5, M_PI])]
     # obstacles = [Obstacle([9.4, 15.5, 0, 3, 1.5, M_PI / 6])]
 
@@ -80,11 +80,13 @@ if __name__ == '__main__':
 
     path_point = np.loadtxt("../data/roadMap_lzjSouth1.txt")
     path_point = path_point[:, 1:3]
-    obstacle_data = {'px': -260,
-                     'py': -500,
-                     'v': 0}
+    obstacle_data = {'px': path_point[150, 0],
+                     'py': path_point[150, 1],
+                     'v': 0,
+                     'heading': math.pi/2}
     initial_state = {'px': -251,
                      'py': -503,
-                     'v': 5}
+                     'v': 5,
+                     'heading': 0}
     res = lattice_planning(path_point, obstacle_data, initial_state, show_res=True)
 

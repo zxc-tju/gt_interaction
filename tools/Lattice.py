@@ -853,7 +853,7 @@ if __name__ == '__main__':
     # from listener: path_data, tp_list, obstacles
     # sampling: input theta_thr, ttcs; ouput theta_samp, dist_samp, d_end_samp
     # to talker: traj_points (list) or False
-    path_data = np.loadtxt("roadMap_lzjSouth1.txt")
+    path_data = np.loadtxt("../data/roadMap_lzjSouth1.txt")
     rx = path_data[:, 1]
     ry = path_data[:, 2]
     theta_thr = M_PI / 6  # delta theta threhold, deviation from matched path
@@ -861,13 +861,13 @@ if __name__ == '__main__':
     # dist_samp = [v_tgt * ttc for ttc in ttcs]   # sampling distances, m
     # dist_prvw = dist_samp[0]                    # preview distance, equal to minimal sampling distance
     # d_end_samp = [0]                            # sampling d_cond_end[0], probably useless
-    obstacles = [Obstacle([rx[150], ry[150], 0, 0.5, 0.5, M_PI / 6]),
-                 Obstacle([rx[300] + 1, ry[300], 0, 1, 1, M_PI / 2]),
-                 Obstacle([rx[500] + 1, ry[500], 0, 1, 1, M_PI / 3])]
+    obstacles = [Obstacle([rx[150], ry[150] + 2, 0, 0.5, 0.5, M_PI / 6]),
+                 Obstacle([rx[300], ry[300] - 1, 0, 1, 1, M_PI / 2]),
+                 Obstacle([rx[500], ry[500], 0, 1, 1, M_PI / 3])]
     cts_points = np.array([rx, ry])
     path_points = CalcRefLine(cts_points)
     # theta_init = math.atan2((ry[1]-ry[0]), (rx[1]-rx[0]))
-    tp_list = [rx[0], ry[0], 0, 0, 3., 0]  # from sensor actually, an example here
+    tp_list = [rx[0], ry[0]-1, 0, 0, 1, 0]  # from sensor actually, an example here
     traj_point = TrajPoint(tp_list)
     traj_point.MatchPath(path_points)  # matching once is enough
     for obstacle in obstacles:
@@ -920,7 +920,7 @@ if __name__ == '__main__':
                                               obstacle.width, color='r', angle=obstacle.heading * 180 / M_PI))
             plt.axis('scaled')
         plt.show()
-        plt.pause(0.0002)
+        plt.pause(0.1)
         plt.clf()
         """plt.close()
         print(traj_point.v)
