@@ -7,6 +7,7 @@ import math
 from scipy.optimize import minimize
 from tools.utility import get_central_vertices, kinematic_model, get_intersection_point
 import copy
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 # simulation setting
 dt = 0.12
@@ -22,6 +23,7 @@ weight_metric = weight_metric / weight_metric.sum()
 # weight of interior and group cost
 WEIGHT_INT = 1
 WEIGHT_GRP = 0.22
+# WEIGHT_GRP = 0.4
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
@@ -65,6 +67,8 @@ class Agent:
         """
         Solve optimization to output best solution given interacting counterpart's track
         """
+        method = 1
+
         track_len = np.size(inter_track, 0)
         self_info = [self.position,
                      self.velocity,
@@ -74,14 +78,19 @@ class Agent:
 
         p, v, h = self_info[0:3]
         init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
-        fun = utility_ibr(self_info, inter_track)  # objective function
         u0 = np.concatenate([1 * np.zeros([(track_len - 1), 1]),
                              np.zeros([(track_len - 1), 1])])  # initialize solution
         bds_acc = [(-MAX_ACCELERATION, MAX_ACCELERATION) for i in range(track_len - 1)]
         bds_str = [(-MAX_STEERING_ANGLE, MAX_STEERING_ANGLE) for i in range(track_len - 1)]
         bds = bds_acc + bds_str
 
-        res = minimize(fun, u0, bounds=bds, method='SLSQP')
+        if method == 1:
+            fun = utility_ibr(self_info, inter_track)  # objective function
+            res = minimize(fun, u0, bounds=bds, method='SLSQP')
+
+        else:
+            pass
+
         x = np.reshape(res.x, [2, track_len - 1]).T
         self.action = x
         self.trj_solution = kinematic_model(x, init_state_4_kine, track_len, dt)  # get trajectory
@@ -111,6 +120,27 @@ class Agent:
                 if count_iter > iter_limit:
                     break
             virtual_agent_track_collection.append(virtual_inter_agent.trj_solution)
+        self.estimated_inter_agent.virtual_track_collection.append(virtual_agent_track_collection)
+
+    def ibr_interact_with_virtual_agents_parallel(self, agent_inter, iter_limit=10):
+        """
+        Generate copy of the interacting agent and interact with them
+        :param iter_limit: max iteration number
+        :param agent_inter: Agent:interacting agent
+        :return:
+        """
+        virtual_agent_track_collection = []
+
+        pool = ProcessPoolExecutor(max_workers=8)
+        tasks = []
+        for i, ipv_temp in enumerate(virtual_agent_IPV_range):
+            virtual_inter_agent = copy.deepcopy(agent_inter)
+            virtual_inter_agent.ipv = ipv_temp
+            agent_self_temp = copy.deepcopy(self)
+            tasks.append(pool.submit(game_thread, agent_self_temp, virtual_inter_agent, iter_limit))
+
+        for t in tasks:
+            virtual_agent_track_collection.append(t.result())
         self.estimated_inter_agent.virtual_track_collection.append(virtual_agent_track_collection)
 
     def ibr_interact(self, iter_limit=10):
@@ -466,3 +496,16 @@ def idm_model(para, vel_self, vel_rel, gap):
         acc = -5
 
     return acc
+
+
+def game_thread(agent, agent_iter, iter_limit=10):
+    count_iter = 0  # count number of iteration
+    last_self_track = np.zeros_like(agent.trj_solution)  # initialize a track reservation
+    while np.linalg.norm(agent.trj_solution[:, 0:2] - last_self_track[:, 0:2]) > 1e-3:
+        count_iter += 1
+        last_self_track = agent.trj_solution
+        agent.solve_optimization(agent_iter.trj_solution)
+        agent_iter.solve_optimization(agent.trj_solution)
+        if count_iter > iter_limit:
+            break
+    return agent.trj_solution

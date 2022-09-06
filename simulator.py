@@ -77,6 +77,7 @@ class Simulator:
 
                 # ==interaction with parallel virtual agents
                 self.agent_lt.ibr_interact_with_virtual_agents(self.agent_gs)
+                # self.agent_lt.ibr_interact_with_virtual_agents_parallel(self.agent_gs)
 
                 # ==interaction with estimated agent
                 self.agent_lt.ibr_interact(iter_limit=iter_limit)
@@ -108,6 +109,7 @@ class Simulator:
             if self.agent_gs.conl_type in {'gt'}:
                 # ==interaction with parallel virtual agents
                 self.agent_gs.ibr_interact_with_virtual_agents(self.agent_lt, iter_limit)
+                # self.agent_gs.ibr_interact_with_virtual_agents_parallel(self.agent_lt, iter_limit)
 
                 # ==interaction with estimated agent
                 self.agent_gs.ibr_interact(iter_limit)
@@ -184,7 +186,7 @@ class Simulator:
         cv_lt = []
         cv_gs = []
         # set figures
-        fig, axes = plt.subplots(1, 2, figsize=[16, 8])
+        fig, axes = plt.subplots(1, 2, figsize=[8, 4])
         fig.suptitle('trajectory_LT_' + self.semantic_result)
         axes[0].set_title('trajectory')
         axes[1].set_title('velocity')
@@ -683,14 +685,17 @@ def main2():
                 simu.agent_lt.target = 'lt_nds'
                 simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
                 try:
+                    time1 = time.perf_counter()
                     simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+                    time2 = time.perf_counter()
+                    print('time consumption: ', time2 - time1)
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
                     # simu.visualize()
-                    simu.save_metadata(num_failed,
-                                       file_name='outputs/simulation_meta_data20220831.xlsx',
-                                       sheet_name=model_type + ' simulation')
+                    # simu.save_metadata(num_failed,
+                    #                    file_name='outputs/simulation_meta_data20220831.xlsx',
+                    #                    sheet_name=model_type + ' simulation')
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
                     num_failed += 1
@@ -725,8 +730,8 @@ def main_test():
 
             simu = Simulator(case_id=case_id)
             simu.sim_type = 'nds'
-            controller_type_lt = bg_type
-            controller_type_gs = 'lattice'
+            controller_type_lt = 'lattice'
+            controller_type_gs = bg_type
             simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
             if simu_scenario:
                 simu.initialize(simu_scenario, tag)
@@ -736,7 +741,11 @@ def main_test():
                 simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
                 # simu.agent_gs.ipv = math.pi/4
                 try:
-                    simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+
+                    time1 = time.perf_counter()
+                    simu.interact(simu_step=5, make_video=False, break_when_finish=False)
+                    time2 = time.perf_counter()
+                    print('time consumption: ', time2 - time1)
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
