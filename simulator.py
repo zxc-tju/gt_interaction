@@ -4,13 +4,14 @@ Interaction simulator
 import copy
 import math
 import numpy as np
-import xlsxwriter
 import pandas as pd
 from agent import Agent
 from tools.utility import draw_rectangle, get_central_vertices, smooth_ployline
 from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
 from NDS_analysis import analyze_ipv_in_nds, cal_pet
+from viztracer import VizTracer
+import time
 
 
 class Scenario:
@@ -232,12 +233,12 @@ class Simulator:
 
         # ----position at each time step
         # version 1
-        # for t in range(num_frame):
-        #     # simulation results
-        #     draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
-        #                    para_alpha=0.3, para_color='#0E76CF')
-        #     draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
-        #                    para_alpha=0.3, para_color='#7030A0')
+        for t in range(num_frame):
+            # simulation results
+            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
+                           para_alpha=0.3, para_color='#0E76CF')
+            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
+                           para_alpha=0.3, para_color='#7030A0')
         #
         #     # nds ground truth
         #     draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
@@ -246,30 +247,30 @@ class Simulator:
         #                    para_alpha=0.3, para_color='red')
 
         # version 2
-        axes[0].scatter(lt_ob_trj[:num_frame, 0],
-                        lt_ob_trj[:num_frame, 1],
-                        s=50,
-                        alpha=0.3,
-                        color='#0E76CF',
-                        label='left-turn simulation')
-        axes[0].scatter(lt_nds_trj[:num_frame, 0],
-                        lt_nds_trj[:num_frame, 1],
-                        s=50,
-                        alpha=0.3,
-                        color='blue',
-                        label='left-turn NDS')
-        axes[0].scatter(gs_ob_trj[:num_frame, 0],
-                        gs_ob_trj[:num_frame, 1],
-                        s=50,
-                        alpha=0.3,
-                        color='#7030A0',
-                        label='go-straight simulation')
-        axes[0].scatter(gs_nds_trj[:num_frame, 0],
-                        gs_nds_trj[:num_frame, 1],
-                        s=50,
-                        alpha=0.3,
-                        color='red',
-                        label='go-straight NDS')
+        # axes[0].scatter(lt_ob_trj[:num_frame, 0],
+        #                 lt_ob_trj[:num_frame, 1],
+        #                 s=50,
+        #                 alpha=0.3,
+        #                 color='#0E76CF',
+        #                 label='left-turn simulation')
+        # axes[0].scatter(lt_nds_trj[:num_frame, 0],
+        #                 lt_nds_trj[:num_frame, 1],
+        #                 s=50,
+        #                 alpha=0.3,
+        #                 color='blue',
+        #                 label='left-turn NDS')
+        # axes[0].scatter(gs_ob_trj[:num_frame, 0],
+        #                 gs_ob_trj[:num_frame, 1],
+        #                 s=50,
+        #                 alpha=0.3,
+        #                 color='#7030A0',
+        #                 label='go-straight simulation')
+        # axes[0].scatter(gs_nds_trj[:num_frame, 0],
+        #                 gs_nds_trj[:num_frame, 1],
+        #                 s=50,
+        #                 alpha=0.3,
+        #                 color='red',
+        #                 label='go-straight NDS')
 
         # ----full tracks at each time step
         # for t in range(self.num_step):
@@ -288,19 +289,19 @@ class Simulator:
         "---- show velocity ----"
         # plt.figure()
         x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
-        axes[1].plot(x_range, vel_ob_vel_norm_lt,
-                     color='blue', label='LT velocity simulation')
+        axes[1].plot(x_range, vel_ob_vel_norm_lt, linestyle='--',
+                     color='blue', label='left-turn simulation')
         axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range],
-                     linestyle='--', color='blue', label='LT velocity NDS')
-        axes[1].plot(x_range, vel_ob_vel_norm_gs,
-                     color='red', label='GS velocity simulation')
+                     color='blue', label='left-turn NDS')
+        axes[1].plot(x_range, vel_ob_vel_norm_gs, linestyle='--',
+                     color='red', label='go-straight simulation')
         axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range],
-                     linestyle='--', color='red', label='GS velocity NDS')
+                     color='red', label='go-straight NDS')
         axes[1].legend()
         axes[0].legend()
         plt.show()
         plt.savefig(file_path + self.tag + '-final.png', dpi=600)
-        plt.close()
+        # plt.close()
 
     def read_nds_scenario(self, controller_type_lt, controller_type_gs):
         cross_id, data_cross, _ = analyze_ipv_in_nds(self.case_id)
@@ -317,8 +318,8 @@ class Simulator:
             if controller_type_lt in {'opt', 'gt'}:
                 ipv_weight_lt = 1 - data_cross[4:, 1]
                 ipv_weight_lt = ipv_weight_lt / ipv_weight_lt.sum()
-                # ipv_lt = sum(ipv_weight_lt * data_cross[4:, 0])
-                ipv_lt = max(sum(ipv_weight_lt * data_cross[4:, 0])-0.1, -math.pi*3/8)
+                ipv_lt = sum(ipv_weight_lt * data_cross[4:, 0])
+                # ipv_lt = max(sum(ipv_weight_lt * data_cross[4:, 0])-0.2, -math.pi*3/8)
             else:
                 ipv_lt = 0
             init_position_gs = [data_cross[0, 9] - 13, data_cross[0, 10] - 7.8]
@@ -327,8 +328,8 @@ class Simulator:
             if controller_type_gs in {'opt', 'gt'}:
                 ipv_weight_gs = 1 - data_cross[4:, 8]
                 ipv_weight_gs = ipv_weight_gs / ipv_weight_gs.sum()
-                # ipv_gs = sum(ipv_weight_gs * data_cross[4:, 7])
-                ipv_gs = max(sum(ipv_weight_gs * data_cross[4:, 7])-0.1, -math.pi*3/8)
+                ipv_gs = sum(ipv_weight_gs * data_cross[4:, 7])
+                # ipv_gs = max(sum(ipv_weight_gs * data_cross[4:, 7])-0.2, -math.pi*3/8)
             else:
                 ipv_gs = 0
             self.lt_actual_trj = data_cross[:, 2:7]
@@ -660,10 +661,10 @@ def main2():
            * 'opt' is the optimal controller work by solving single optimization
        """
 
-    model_type = 'opt'
+    model_type = 'gt'
 
     num_failed = 0
-    for case_id in range(130):
+    for case_id in {51}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
@@ -692,7 +693,7 @@ def main2():
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
-                    # simu.visualize()
+                    simu.visualize(file_path='figures/')
                     # simu.save_metadata(num_failed,
                     #                    file_name='outputs/simulation_meta_data20220831.xlsx',
                     #                    sheet_name=model_type + ' simulation')
@@ -702,11 +703,6 @@ def main2():
                     continue
             else:
                 num_failed += 1
-                # simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
-                # simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
-                #                                            simu.agent_gs.observed_trajectory[:, 0:2], case_type='nds')
-                # simu.visualize()
-                # simu.save_metadata(0, file_name='outputs/meta_data.xlsx', sheet_name='idm simulation')
 
 
 def main_test():
@@ -715,17 +711,19 @@ def main_test():
         * set lt agent as the vehicle under test (ipv=pi/4)
     """
 
-    bg_type = 'opt'
+    bg_type = 'gt'
 
     num_failed = 0
 
-    for case_id in range(130):
+    # for case_id in range(130):
+    for case_id in {106}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
             continue
         else:
-            tag = bg_type + '-test-gs-lattice' + str(case_id)
+            tag = bg_type + '-test-lt-lattice' + str(case_id)
+            # tag = bg_type + '-' + str(case_id)
             print('start case:' + tag)
 
             simu = Simulator(case_id=case_id)
@@ -739,7 +737,6 @@ def main_test():
                 simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
                 simu.agent_lt.target = 'lt_nds'
                 simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
-                # simu.agent_gs.ipv = math.pi/4
                 try:
 
                     time1 = time.perf_counter()
@@ -749,10 +746,11 @@ def main_test():
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
-                    simu.visualize(file_path='figures/' + bg_type + ' test gs lattice/')
-                    simu.save_metadata(num_failed,
-                                       file_name='outputs/test_meta_data20220828.xlsx',
-                                       sheet_name=bg_type + ' test gs-lattice')
+                    simu.visualize(file_path='figures/')
+                    # simu.visualize(file_path='figures/' + bg_type + ' test lt lattice/')
+                    # simu.save_metadata(num_failed,
+                    #                    file_name='outputs/test_meta_data20220828.xlsx',
+                    #                    sheet_name=bg_type + '- test lt-lattice')
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
                     num_failed += 1
@@ -766,7 +764,7 @@ if __name__ == '__main__':
     # main1()
 
     'simulate with nds data from Jianhe-Xianxia intersection'
-    # main2()
+    main2()
 
     'test lattice planner with trajectory replay'
-    main_test()
+    # main_test()
