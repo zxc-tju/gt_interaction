@@ -60,8 +60,8 @@ def kinematic_model(u, init_state, TRACK_LEN, dt):
     v_temp = np.sqrt(vx ** 2 + vy ** 2)
 
     for i in range(len(u)):
-        a = u[i][0]
-        delta = u[i][1]
+        a = u[i, 0]
+        delta = u[i, 1]
         beta = math.atan((r_len / (r_len + f_len)) * math.tan(delta))
         x = x + v_temp * np.cos(psi + beta) * dt
         y = y + v_temp * np.sin(psi + beta) * dt
@@ -72,6 +72,21 @@ def kinematic_model(u, init_state, TRACK_LEN, dt):
         vy = v_temp * np.sin(psi)
 
         track.append([x, y, vx, vy, psi])
+    return np.array(track)
+
+
+def mass_point_model(u, init_state, TRACK_LEN, dt):
+    if not np.size(u, 0) == TRACK_LEN - 1:
+        u = np.array([u[0:TRACK_LEN - 1], u[TRACK_LEN - 1:]]).T
+    x, y, vx, vy, h = init_state
+    track = [[x, y, vx, vy, h]]
+    for i in range(len(u)):
+        vx = vx + u[i, 0] * dt
+        vy = vy + u[i, 1] * dt
+        x = x + vx * dt
+        y = y + vy * dt
+        heading = math.atan(vy/vx)
+        track.append([x, y, vx, vy, heading])
     return np.array(track)
 
 
