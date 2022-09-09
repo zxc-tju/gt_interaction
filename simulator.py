@@ -72,7 +72,7 @@ class Simulator:
 
         for t in range(self.num_step):
 
-            # print('time_step: ', t, '/', self.num_step)
+            print('time_step: ', t, '/', self.num_step)
 
             "==plan for left-turn=="
             if self.agent_lt.conl_type in {'gt'}:
@@ -497,13 +497,13 @@ class Simulator:
         # 9
         ave_pos_dev_lt = np.linalg.norm(ob_trj_lt - nds_trj_lt, axis=1).mean()
         # 10
-        pos_rsme_lt = np.sqrt(
+        pos_rmse_lt = np.sqrt(
             ((ave_pos_dev_lt - np.linalg.norm(ob_trj_lt - nds_trj_lt, axis=1)) ** 2).sum()
             / np.size(ob_trj_lt, 0))
         # 11
         ave_pos_dev_gs = np.linalg.norm(ob_trj_gs - nds_trj_gs, axis=1).mean()
         # 12
-        pos_rsme_gs = np.sqrt(
+        pos_rmse_gs = np.sqrt(
             ((ave_pos_dev_gs - np.linalg.norm(ob_trj_gs - nds_trj_gs, axis=1)) ** 2).sum()
             / np.size(ob_trj_gs, 0))
 
@@ -526,16 +526,16 @@ class Simulator:
                             mean_vel_simu_lt, mean_vel_nds_lt,
                             mean_vel_simu_gs, mean_vel_nds_gs,
                             vel_rmse_lt, vel_rmse_gs,
-                            ave_pos_dev_lt, pos_rsme_lt,
-                            ave_pos_dev_gs, pos_rsme_gs,
+                            ave_pos_dev_lt, pos_rmse_lt,
+                            ave_pos_dev_gs, pos_rmse_gs,
                             min_apet_nds, min_apet_simu,
                             mean_apet_nds, mean_apet_simu], ],
                           columns=['case id', 'semantic result',
-                                   'simualtion velocity lt', 'nds velocity lt',
-                                   'simualtion velocity gs', 'nds velocity gs',
-                                   'velocity RMSE lt', 'velocity RMSE gs',
-                                   'average POS deviation lt', 'POS RSME lt',
-                                   'average POS deviation gs', 'POS RSME gs',
+                                   'simu. v. lt', 'nds v. lt',
+                                   'simu. v. gs', 'nds v. gs',
+                                   'v. RMSE lt', 'velocity RMSE gs',
+                                   'ave. POS deviation lt', 'POS RMSE lt',
+                                   'ave. POS deviation gs', 'POS RMSE gs',
                                    'MIN APET NDS', 'MIN APET SIMU',
                                    'mean APET NDS', 'mean APET SIMU', ])
 
@@ -646,14 +646,14 @@ def main1():
     init_velocity_lt = [1.5, 0.3]
     init_heading_lt = math.pi / 4
     ipv_lt = 0
-    controller_type_lt = 'opt'
+    controller_type_lt = 'gt'
 
     '---- set initial state of the go-straight vehicle ----'
     init_position_gs = [22, -2]
-    init_velocity_gs = [-1.5, 0]
+    init_velocity_gs = [-3, 0]
     init_heading_gs = math.pi
     ipv_gs = math.pi / 8
-    controller_type_gs = 'opt'
+    controller_type_gs = 'gt'
 
     '---- generate scenario ----'
     simu_scenario = Scenario([init_position_lt, init_position_gs],
@@ -665,7 +665,12 @@ def main1():
     simu = Simulator()
     simu.sim_type = 'simu'
     simu.initialize(simu_scenario, tag)
-    simu.interact(simu_step=10)
+
+    time1 = time.perf_counter()
+    simu.interact(simu_step=10, iter_limit=10)
+    time2 = time.perf_counter()
+    print('time consumption: ', time2-time1)
+
     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory,
                                                simu.agent_gs.observed_trajectory)
     simu.visualize('./')
@@ -780,10 +785,10 @@ def main_test():
 
 if __name__ == '__main__':
     'simulate unprotected left-turn at a T-intersection'
-    # main1()
+    main1()
 
     'simulate with nds data from Jianhe-Xianxia intersection'
-    main2()
+    # main2()
 
     'test lattice planner with trajectory replay'
     # main_test()

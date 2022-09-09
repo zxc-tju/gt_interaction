@@ -292,8 +292,8 @@ def CalcRefLine(cts_points):
     rkappa[-1] = rkappa[-2]
     rdkappa[-1] = rdkappa[-3]
     rdkappa[-2] = rdkappa[-3]
-    rkappa = scipy.signal.savgol_filter(rkappa, 333, 5)
-    rdkappa = scipy.signal.savgol_filter(rdkappa, 555, 5)
+    rkappa = scipy.signal.savgol_filter(rkappa, 33, 5)
+    rdkappa = scipy.signal.savgol_filter(rdkappa, 55, 5)
     # plt.figure(1)
     # plt.subplot(211)
     # plt.plot(rkappa)

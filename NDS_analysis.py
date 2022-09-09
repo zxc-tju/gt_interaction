@@ -333,11 +333,11 @@ def analyze_nds(case_id):
             gs_track = gs_track - np.repeat([[13, 7.8]], np.size(gs_track, 0), axis=0)
 
             # estimate ipv
-            agent_lt.estimate_self_ipv_in_NDS(lt_track, gs_track)
+            agent_lt.estimate_self_ipv_in_nds(lt_track, gs_track)
             ipv_collection[t, 0] = agent_lt.ipv
             ipv_error_collection[t, 0] = agent_lt.ipv_error
 
-            agent_gs.estimate_self_ipv_in_NDS(gs_track, lt_track)
+            agent_gs.estimate_self_ipv_in_nds(gs_track, lt_track)
             ipv_collection[t, 1] = agent_gs.ipv
             ipv_error_collection[t, 1] = agent_gs.ipv_error
 
