@@ -303,17 +303,22 @@ class Agent:
         # self.ipv_collection.append(self.ipv)
         # self.ipv_error_collection.append(self.ipv_error)
 
-    def estimate_self_ipv_in_NDS(self, self_actual_track, inter_track):
-        self_virtual_track_collection = []
-        # ipv_range = np.random.normal(self.ipv, math.pi/6, 6)
-        ipv_range = virtual_agent_IPV_range
-        for ipv_temp in ipv_range:
-            agent_self_temp = copy.deepcopy(self)
-            agent_self_temp.ipv = ipv_temp
-            # generate track with varied ipv
-            virtual_track_temp = agent_self_temp.solve_optimization(inter_track)
-            # save track into a collection
-            self.virtual_track_collection.append(virtual_track_temp[:, 0:2])
+    def draw(self):
+        cv_init_it, _ = get_central_vertices('lt')
+        cv_init_gs, _ = get_central_vertices('gs')
+        plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], 'b--')
+        for t in range(np.size(self.trj_solution, 0)):
+            plt.plot(cv_init_it[:, 0], cv_init_it[:, 1], 'r-')
+            plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], 'b-')
+            plt.plot(self.trj_solution[t, 0], self.trj_solution[t, 1], 'r*')
+            plt.plot(self.estimated_inter_agent.trj_solution[t, 0],
+                     self.estimated_inter_agent.trj_solution[t, 1], 'b*')
+            plt.axis('equal')
+            plt.xlim(5, 25)
+            plt.ylim(-10, 10)
+            plt.pause(0.01)
+        plt.show()
+
 
         # calculate reliability of each track
         ipv_weight = cal_reliability(inter_track,

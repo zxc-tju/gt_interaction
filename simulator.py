@@ -212,18 +212,22 @@ class Simulator:
         # lt track (observed in simulation and ground truth in nds)
         lt_ob_trj = self.agent_lt.observed_trajectory[:, 0:2]
         lt_ob_heading = self.agent_lt.observed_trajectory[:, 4] / math.pi * 180
-        lt_nds_trj = np.array(self.lt_actual_trj[:, 0:2])
-        lt_nds_heading = np.array(self.lt_actual_trj[:, 4]) / math.pi * 180
+
         vel_ob_vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
-        vel_nds_vel_norm_lt = np.linalg.norm(self.lt_actual_trj[:, 2:4], axis=1)
+        if self.sim_type == 'nds':
+            vel_nds_vel_norm_lt = np.linalg.norm(self.lt_actual_trj[:, 2:4], axis=1)
+            lt_nds_trj = np.array(self.lt_actual_trj[:, 0:2])
+            lt_nds_heading = np.array(self.lt_actual_trj[:, 4]) / math.pi * 180
 
         # gs track (observed in simulation and ground truth in nds)
         gs_ob_trj = self.agent_gs.observed_trajectory[:, 0:2]
         gs_ob_heading = self.agent_gs.observed_trajectory[:, 4] / math.pi * 180
-        gs_nds_trj = np.array(self.gs_actual_trj[:, 0:2])
-        gs_nds_heading = np.array(self.gs_actual_trj[:, 4]) / math.pi * 180
+
         vel_ob_vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
-        vel_nds_vel_norm_gs = np.linalg.norm(self.gs_actual_trj[:, 2:4], axis=1)
+        if self.sim_type == 'nds':
+            vel_nds_vel_norm_gs = np.linalg.norm(self.gs_actual_trj[:, 2:4], axis=1)
+            gs_nds_trj = np.array(self.gs_actual_trj[:, 0:2])
+            gs_nds_heading = np.array(self.gs_actual_trj[:, 4]) / math.pi * 180
 
         num_frame = len(lt_ob_trj)
 
@@ -240,11 +244,13 @@ class Simulator:
             draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
                            para_alpha=0.3, para_color='#7030A0')
         #
-        #     # nds ground truth
-        #     draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
-        #                    para_alpha=0.3, para_color='blue')
-        #     draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
-        #                    para_alpha=0.3, para_color='red')
+            # nds ground truth
+            if self.sim_type == 'nds':
+                draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
+                               para_alpha=0.3, para_color='blue')
+
+                draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
+                               para_alpha=0.3, para_color='red')
 
         # version 2
         # axes[0].scatter(lt_ob_trj[:num_frame, 0],
@@ -287,16 +293,18 @@ class Simulator:
         #                  alpha=0.2)
 
         "---- show velocity ----"
-        # plt.figure()
         x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
         axes[1].plot(x_range, vel_ob_vel_norm_lt, linestyle='--',
                      color='blue', label='left-turn simulation')
-        axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range],
-                     color='blue', label='left-turn NDS')
         axes[1].plot(x_range, vel_ob_vel_norm_gs, linestyle='--',
                      color='red', label='go-straight simulation')
-        axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range],
-                     color='red', label='go-straight NDS')
+
+        if self.sim_type == 'nds':
+            axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range],
+                         color='red', label='go-straight NDS')
+            axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range],
+                         color='blue', label='left-turn NDS')
+
         axes[1].legend()
         axes[0].legend()
         plt.show()
