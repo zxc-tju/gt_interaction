@@ -5,9 +5,11 @@ import math
 from shapely.geometry import LineString
 import matplotlib.patches as patches
 import matplotlib.transforms as mt
+import scipy.signal
+from tools.Lattice import PathPoint
 
 
-def smooth_ployline(cv_init, point_num=1000):
+def smooth_ployline(cv_init, point_num=100):
     cv = cv_init
     list_x = cv[:, 0]
     list_y = cv[:, 1]
@@ -39,7 +41,7 @@ def get_central_vertices(cv_type, origin_point=None):
     if cv_type == 'lt':  # left turn
         cv_init = np.array([[0, -10], [9, -7.5], [12, -5.2], [13.5, 0], [14, 10], [14, 20], [14, 30]])
     elif cv_type == 'gs':  # go straight
-        cv_init = np.array([[20, -2], [10, -2], [0, -2], [-150, -2]])
+        cv_init = np.array([[100, -2], [10, -2], [0, -2], [-150, -2]])
     elif cv_type == 'lt_nds':  # left turn in NDS
         cv_init = np.array([origin_point, [34.9-13, 16.6-7.8], [45.2-13, 18.8-7.8], [51.6-13, 20.3-7.8]])
     elif cv_type == 'gs_nds':  # go straight in NDS
@@ -76,16 +78,17 @@ def kinematic_model(u, init_state, TRACK_LEN, dt):
 
 
 def mass_point_model(u, init_state, TRACK_LEN, dt):
-    if not np.size(u, 0) == TRACK_LEN - 1:
-        u = np.array([u[0:TRACK_LEN - 1], u[TRACK_LEN - 1:]]).T
+
+    # u = np.array([u[0:TRACK_LEN - 1], u[TRACK_LEN - 1:]]).T
     x, y, vx, vy, h = init_state
     track = [[x, y, vx, vy, h]]
-    for i in range(len(u)):
-        vx = vx + u[i, 0] * dt
-        vy = vy + u[i, 1] * dt
+    for i in range(TRACK_LEN-1):
+        vx = vx + u[i] * dt
+        vy = vy + u[i+TRACK_LEN-1] * dt
         x = x + vx * dt
         y = y + vy * dt
         heading = math.atan(vy/vx)
+        # heading = 0
         track.append([x, y, vx, vy, heading])
     return np.array(track)
 
@@ -112,3 +115,43 @@ def get_intersection_point(polyline1, polyline2):
 
     inter_point = s1.intersection(s2)
     return inter_point
+
+
+def CalcRefLine(cts_points):
+    ''' deal with reference path points 2d-array
+    to calculate rs/rtheta/rkappa/rdkappa according to cartesian points'''
+    rx = cts_points[0]  # the x value
+    ry = cts_points[1]  # the y value
+    rs = np.zeros_like(rx)
+    rtheta = np.zeros_like(rx)
+    rkappa = np.zeros_like(rx)  # 曲率
+    rdkappa = np.zeros_like(rx)  # 曲率变化率
+    for i, x_i in enumerate(rx):
+        # y_i = ry[i]
+        if i != 0:
+            dx = rx[i] - rx[i - 1]
+            dy = ry[i] - ry[i - 1]
+            rs[i] = rs[i - 1] + math.sqrt(dx ** 2 + dy ** 2)
+        if i < len(ry) - 1:
+            dx = rx[i + 1] - rx[i]
+            dy = ry[i + 1] - ry[i]
+            ds = math.sqrt(dx ** 2 + dy ** 2)
+            rtheta[i] = math.copysign(math.acos(dx / ds), dy)
+    rtheta[-1] = rtheta[-2]
+    rkappa[:-1] = np.diff(rtheta) / np.diff(rs)
+    rdkappa[:-1] = np.diff(rkappa) / np.diff(rs)
+    rkappa[-1] = rkappa[-2]
+    rdkappa[-1] = rdkappa[-3]
+    rdkappa[-2] = rdkappa[-3]
+    # rkappa = scipy.signal.savgol_filter(rkappa, 333, 5)
+    # rdkappa = scipy.signal.savgol_filter(rdkappa, 555, 5)
+    # plt.figure(1)
+    # plt.subplot(211)
+    # plt.plot(rkappa)
+    # plt.subplot(212)
+    # plt.plot(rdkappa)
+    # plt.show()
+    path_points = []
+    for i in range(len(rx)):
+        path_points.append(PathPoint([rx[i], ry[i], rs[i], rtheta[i], rkappa[i], rdkappa[i]]))
+    return path_points

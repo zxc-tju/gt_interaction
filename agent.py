@@ -5,9 +5,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 from scipy.optimize import minimize
-from tools.utility import get_central_vertices, kinematic_model, get_intersection_point
+from tools.utility import get_central_vertices, kinematic_model, mass_point_model, get_intersection_point, CalcRefLine
+from tools.Lattice import TrajPoint
 import copy
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
+import viztracer
+import time
 
 # simulation setting
 dt = 0.12
@@ -62,39 +65,6 @@ class Agent:
         self.ipv_collection = []
         self.ipv_error_collection = []
         self.virtual_track_collection = []
-
-    def solve_optimization(self, inter_track):
-        """
-        Solve optimization to output best solution given interacting counterpart's track
-        """
-        method = 1
-
-        track_len = np.size(inter_track, 0)
-        self_info = [self.position,
-                     self.velocity,
-                     self.heading,
-                     self.ipv,
-                     self.target]
-
-        p, v, h = self_info[0:3]
-        init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
-        u0 = np.concatenate([1 * np.zeros([(track_len - 1), 1]),
-                             np.zeros([(track_len - 1), 1])])  # initialize solution
-        bds_acc = [(-MAX_ACCELERATION, MAX_ACCELERATION) for i in range(track_len - 1)]
-        bds_str = [(-MAX_STEERING_ANGLE, MAX_STEERING_ANGLE) for i in range(track_len - 1)]
-        bds = bds_acc + bds_str
-
-        if method == 1:
-            fun = utility_ibr(self_info, inter_track)  # objective function
-            res = minimize(fun, u0, bounds=bds, method='SLSQP')
-
-        else:
-            pass
-
-        x = np.reshape(res.x, [2, track_len - 1]).T
-        self.action = x
-        self.trj_solution = kinematic_model(x, init_state_4_kine, track_len, dt)  # get trajectory
-        return self.trj_solution
 
     def ibr_interact_with_virtual_agents(self, agent_inter, iter_limit=10):
         """
@@ -156,6 +126,44 @@ class Agent:
             self.estimated_inter_agent.solve_optimization(self.trj_solution)
             if count_iter > iter_limit:  # limited to less than 10 iterations
                 break
+
+    def linear_ibr_interact(self, iter_limit=10):
+        """
+        Interact with the estimated interacting agent. This agent's IPV is continuously updated.
+        """
+        p, v, h = self.position, self.velocity, self.heading
+        init_state = [p[0], p[1], v[0], v[1], h]  # initial state
+        last_track_self = mass_point_model(np.zeros([TRACK_LEN*2-2]), init_state, TRACK_LEN, dt)
+        last_track_self = last_track_self[:, 0:2]
+
+        p, v, h = self.estimated_inter_agent.position, \
+                  self.estimated_inter_agent.velocity, \
+                  self.estimated_inter_agent.heading
+        init_state = [p[0], p[1], v[0], v[1], h]  # initial state
+        last_track_inter = mass_point_model(np.zeros([TRACK_LEN*2-2]), init_state, TRACK_LEN, dt)
+        last_track_inter = last_track_inter[:, 0:2]
+
+        record_track_inter = np.zeros([TRACK_LEN, 2])
+
+        # plan for interacting agent
+        last_track_inter = self.estimated_inter_agent.\
+            solve_linear_optimization(last_track_inter[:, 0:2], last_track_self[:, 0:2])
+
+        count_iter = 0  # count number of iteration
+        while (np.linalg.norm(record_track_inter - last_track_inter) > 1e-3) \
+                and (count_iter < iter_limit):
+
+            count_iter += 1
+
+            # plan for subjective agent
+            last_track_self = self.solve_linear_optimization(last_track_self, last_track_inter)
+
+            #  plan for interacting agent
+            last_track_inter = self.estimated_inter_agent.\
+                solve_linear_optimization(last_track_inter, last_track_self)
+
+        #  final plan for subjective agent
+        self.solve_linear_optimization(last_track_self, last_track_inter)
 
     def opt_plan(self):
         self.estimated_inter_agent.solve_optimization(self.trj_solution)
@@ -233,6 +241,93 @@ class Agent:
                                        new_velocity[0],
                                        new_velocity[1],
                                        new_heading]])
+
+    def solve_optimization(self, inter_track):
+        """
+        Solve optimization to output best solution given interacting counterpart's track
+        """
+
+        track_len = np.size(inter_track, 0)
+        self_info = [self.position,
+                     self.velocity,
+                     self.heading,
+                     self.ipv,
+                     self.target]
+
+        p, v, h = self_info[0:3]
+        init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
+
+        u0 = np.concatenate([1 * np.zeros([(track_len - 1), 1]),
+                             np.zeros([(track_len - 1), 1])])  # initialize solution
+        bds_acc = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(track_len - 1)]
+        bds_str = [(-MAX_STEERING_ANGLE, MAX_STEERING_ANGLE) for _ in range(track_len - 1)]
+        bds = bds_acc + bds_str
+
+        fun = utility_fun(self_info, inter_track)  # objective function
+        res = minimize(fun, u0, bounds=bds, method='SLSQP')
+
+        x = np.reshape(res.x, [2, track_len - 1]).T
+        self.action = x
+        self.trj_solution = kinematic_model(x, init_state_4_kine, track_len, dt)  # get trajectory
+        return self.trj_solution
+
+    def solve_linear_optimization(self, last_track_self, last_track_inter):
+        """
+        Solve optimization to output best solution given interacting counterpart's track
+        """
+
+        track_len = TRACK_LEN
+        self_info = [self.position,
+                     self.velocity,
+                     self.heading,
+                     self.ipv,
+                     self.target]
+
+        p, v, h = self_info[0:3]
+        init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
+
+        u0 = np.zeros([(2 * track_len - 2), 1])  # initialize solution
+        bds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(2 * track_len - 2)]
+
+        # calculate model parameters
+        min_dis = 2
+        dis_ps2pi = np.linalg.norm(last_track_self - last_track_inter, axis=1)
+        miu = np.zeros_like(dis_ps2pi)
+        miu[np.where(dis_ps2pi - min_dis < 0.5)] = 1
+
+        if self.target in {'gs_nds', 'lt_nds'}:
+            cv, _ = get_central_vertices(self.target, last_track_self[0, :])
+        else:
+            cv, _ = get_central_vertices(self.target, None)
+        path_points = CalcRefLine([cv[:, 0], cv[:, 1]])  # reference path
+
+        #  match track point onto the reference path
+        matched_points = []
+        tao = []
+        vec_n = []
+        vec_t = []
+        kappa = []
+        for i, point in enumerate(last_track_self):
+            tp = TrajPoint([point[0], point[1], 0, 0, 0, 0])
+            matched_point = tp.MatchPath(path_points)
+            matched_points.append(matched_point)
+            tao.append([matched_point.rx, matched_point.ry])
+            vec_t.append([math.cos(matched_point.rtheta), math.sin(matched_point.rtheta)])
+            vec_n.append(np.dot(np.array(vec_t[i]), np.array([[0, -1], [1, 0]])))
+            kappa.append(matched_point.rkappa)
+
+        tao = np.array(tao)
+        vec_t = np.array(vec_t)
+        vec_n = np.array(vec_n)
+
+        fun = linear_utility_fun(self_info, tao, vec_t, vec_n, kappa, last_track_self)  # objective function
+        res = minimize(fun, u0, bounds=bds, method='SLSQP')
+
+        # x = np.reshape(res.x, [2, track_len - 1]).T
+        x = res.x
+        self.action = x
+        self.trj_solution = mass_point_model(x, init_state_4_kine, track_len, dt)  # get trajectory
+        return self.trj_solution[:, 0:2]
 
     def update_state(self, inter_agent):
         self.position = self.trj_solution[1, 0:2]
@@ -320,22 +415,50 @@ class Agent:
         plt.show()
 
 
-        # calculate reliability of each track
-        ipv_weight = cal_reliability(inter_track,
-                                     self_actual_track,
-                                     self.virtual_track_collection,
-                                     self.target)
+def linear_utility_fun(self_info, tao, vec_t, vec_n, kappa, last_track_self):
+    def fun(u):
+        """
+        Calculate the utility from the perspective of "self" agent
 
-        # weighted sum of all candidates' IPVs
-        self.ipv = sum(ipv_range * ipv_weight)
-        self.ipv_error = 1 - np.sqrt(sum(ipv_weight ** 2))
+        :param u: num_step by 4 array, where the 1\2 columns are control of "self" agent
+                  and 3\4 columns control of "interacting" agent
+        :return: utility of the "self" agent under the control u
+        """
+        p, v, h = self_info[0:3]
+        init_state_4_kine = [p[0], p[1], v[0], v[1], h]
+        track_info_self = mass_point_model(u, init_state_4_kine, TRACK_LEN, dt)
+        new_track_self = track_info_self[:, 0:2]
+        util = cal_linear_util(new_track_self, tao, vec_t, vec_n, kappa, last_track_self)
+        return util
 
-        # # save updated ipv and estimation error
-        # self.ipv_collection.append(self.ipv)
-        # self.ipv_error_collection.append(self.ipv_error)
+    return fun
 
 
-def utility_ibr(self_info, track_inter):
+def cal_linear_util(new_track, tao, vec_t, vec_n, kappa, last_track):
+
+
+    '---- define reward of travel progress ----'
+    travel_progress = np.dot(vec_t[-1], new_track[-1]) / \
+                      (1 + kappa[-1] * np.dot((tao[-1] - last_track[-1, :]), vec_n[-1, :]))
+
+    # travel_progress = 1
+    '---- define cost of lane keeping ----'
+    dev_cv = 0
+    for k in range(np.size(vec_n, 0)):
+        dis_new2last = new_track[k, :] - tao[k, :]
+        dev_cv = dev_cv + abs(vec_n[k, 0] * dis_new2last[0] + vec_n[k, 1] * dis_new2last[1])
+
+    '---- interacting agent reward ----'
+    r_other = 0
+    # for k in range(len(miu)):
+    #     r_other = r_other + \
+    #               miu[k] / np.linalg.norm(last_track[k, :] - last_track_inter[k, :]) \
+    #               * np.dot((last_track[k, :] - last_track_inter[k, :]), new_track[k, :])
+
+    return -(travel_progress - dev_cv + r_other)
+
+
+def utility_fun(self_info, track_inter):
     def fun(u):
         """
         Calculate the utility from the perspective of "self" agent
@@ -514,3 +637,28 @@ def game_thread(agent, agent_iter, iter_limit=10):
         if count_iter > iter_limit:
             break
     return agent.trj_solution
+
+
+if __name__ == '__main__':
+    '---- set initial state of the left-turn vehicle ----'
+    init_position_lt = [11, -5.8]
+    init_velocity_lt = [1.5, 0.3]
+    init_heading_lt = math.pi / 4
+    ipv_lt = 0
+    controller_type_lt = 'opt'
+
+    '---- set initial state of the go-straight vehicle ----'
+    init_position_gs = [22, -2]
+    init_velocity_gs = [-1.5, 0]
+    init_heading_gs = math.pi
+    ipv_gs = math.pi / 8
+
+    agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt')
+    agent_gs = Agent(init_position_gs, init_velocity_gs, init_heading_gs, 'gs')
+    agent_lt.estimated_inter_agent = copy.deepcopy(agent_gs)
+    agent_gs.estimated_inter_agent = copy.deepcopy(agent_lt)
+    agent_lt.ipv = 0
+    agent_gs.ipv = 0
+
+    agent_lt.linear_ibr_interact(iter_limit=10)
+    agent_lt.draw()

@@ -51,19 +51,20 @@ class Simulator:
         self.agent_gs.conl_type = self.scenario.conl_type['gs']
         self.tag = case_tag
 
-    def interact(self, simu_step=30, make_video=False, break_when_finish=False):
+    def interact(self, simu_step=30, iter_limit=10, make_video=False, break_when_finish=False):
         """
         Simulate the given scenario step by step
 
         Parameters
         ----------
+        iter_limit
         make_video
         simu_step: number of simulation steps
         break_when_finish: (if set to be True) break the simulation when any agent crossed the conflict point
 
         """
         self.num_step = simu_step
-        iter_limit = 3
+        # iter_limit = 3
 
         if make_video:
             plt.ion()
@@ -82,6 +83,12 @@ class Simulator:
 
                 # ==interaction with estimated agent
                 self.agent_lt.ibr_interact(iter_limit=iter_limit)
+
+            elif self.agent_lt.conl_type in {'linear-gt'}:
+                time1 = time.perf_counter()
+                self.agent_lt.linear_ibr_interact(iter_limit=iter_limit)
+                time2 = time.perf_counter()
+                print('time consumption: ', time2 - time1)
 
             elif self.agent_lt.conl_type in {'opt'}:
                 self.agent_lt.opt_plan()
@@ -114,6 +121,9 @@ class Simulator:
 
                 # ==interaction with estimated agent
                 self.agent_gs.ibr_interact(iter_limit)
+
+            elif self.agent_gs.conl_type in {'linear-gt'}:
+                self.agent_gs.linear_ibr_interact()
 
             elif self.agent_gs.conl_type in {'opt'}:
                 self.agent_gs.opt_plan()
@@ -623,8 +633,9 @@ def main1():
     """
     === main for simulating unprotected left-turning ===
     1. Set initial motion state before the simulation
-    2. Change controller type by manually setting controller_type_xx as 'gt' or 'opt'
-        * 'gt' is the game-theoretic planner work by solving IBR process
+    2. Change controller type by manually setting controller_type_xx as:
+        * 'gt' is game-theoretic planner work by solving IBR
+        * 'linear-gt' is a linear game-theoretic planner work by solving IBR
         * 'opt' is the optimal controller work by solving single optimization
     """
 
