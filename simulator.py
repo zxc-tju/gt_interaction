@@ -45,6 +45,8 @@ class Simulator:
         self.agent_gs = Agent(scenario.position['gs'], scenario.velocity['gs'], scenario.heading['gs'], 'gs')
         self.agent_lt.estimated_inter_agent = copy.deepcopy(self.agent_gs)
         self.agent_gs.estimated_inter_agent = copy.deepcopy(self.agent_lt)
+        # self.agent_lt.estimated_inter_agent.ipv = 0 * math.pi/4
+        # self.agent_gs.estimated_inter_agent.ipv = 1 * math.pi/4
         self.agent_lt.ipv = self.scenario.ipv['lt']
         self.agent_gs.ipv = self.scenario.ipv['gs']
         self.agent_lt.conl_type = self.scenario.conl_type['lt']
@@ -73,6 +75,8 @@ class Simulator:
         for t in range(self.num_step):
 
             print('time_step: ', t, '/', self.num_step)
+            # if t == 5:
+            #     print('debug!')
 
             "==plan for left-turn=="
             if self.agent_lt.conl_type in {'gt'}:
@@ -247,60 +251,62 @@ class Simulator:
 
         # ----position at each time step
         # version 1
-        for t in range(num_frame):
-            # simulation results
-            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
-                           para_alpha=0.3, para_color='#0E76CF')
-            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
-                           para_alpha=0.3, para_color='#7030A0')
+        # for t in range(num_frame):
+        #     # simulation results
+        #     draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
+        #                    para_alpha=0.3, para_color='#0E76CF')
+        #     draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
+        #                    para_alpha=0.3, para_color='#7030A0')
+        # #
+        #     # nds ground truth
+        #     if self.sim_type == 'nds':
+        #         draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
+        #                        para_alpha=0.3, para_color='blue')
         #
-            # nds ground truth
-            if self.sim_type == 'nds':
-                draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
-                               para_alpha=0.3, para_color='blue')
-
-                draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
-                               para_alpha=0.3, para_color='red')
+        #         draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
+        #                        para_alpha=0.3, para_color='red')
 
         # version 2
-        # axes[0].scatter(lt_ob_trj[:num_frame, 0],
-        #                 lt_ob_trj[:num_frame, 1],
-        #                 s=50,
-        #                 alpha=0.3,
-        #                 color='#0E76CF',
-        #                 label='left-turn simulation')
-        # axes[0].scatter(lt_nds_trj[:num_frame, 0],
-        #                 lt_nds_trj[:num_frame, 1],
-        #                 s=50,
-        #                 alpha=0.3,
-        #                 color='blue',
-        #                 label='left-turn NDS')
-        # axes[0].scatter(gs_ob_trj[:num_frame, 0],
-        #                 gs_ob_trj[:num_frame, 1],
-        #                 s=50,
-        #                 alpha=0.3,
-        #                 color='#7030A0',
-        #                 label='go-straight simulation')
-        # axes[0].scatter(gs_nds_trj[:num_frame, 0],
-        #                 gs_nds_trj[:num_frame, 1],
-        #                 s=50,
-        #                 alpha=0.3,
-        #                 color='red',
-        #                 label='go-straight NDS')
+        axes[0].scatter(lt_ob_trj[:num_frame, 0],
+                        lt_ob_trj[:num_frame, 1],
+                        s=50,
+                        alpha=0.6,
+                        color='#0E76CF',
+                        label='left-turn simulation')
+        axes[0].scatter(gs_ob_trj[:num_frame, 0],
+                        gs_ob_trj[:num_frame, 1],
+                        s=50,
+                        alpha=0.6,
+                        color='#7030A0',
+                        label='go-straight simulation')
+
+        if self.sim_type == 'nds':
+            axes[0].scatter(lt_nds_trj[:num_frame, 0],
+                            lt_nds_trj[:num_frame, 1],
+                            s=50,
+                            alpha=0.3,
+                            color='blue',
+                            label='left-turn NDS')
+            axes[0].scatter(gs_nds_trj[:num_frame, 0],
+                            gs_nds_trj[:num_frame, 1],
+                            s=50,
+                            alpha=0.3,
+                            color='red',
+                            label='go-straight NDS')
 
         # ----full tracks at each time step
-        # for t in range(self.num_step):
-        #     lt_track = self.agent_lt.trj_solution_collection[t]
-        #     plt.plot(lt_track[:, 0], lt_track[:, 1], '--', color='black')
-        #     gs_track = self.agent_gs.trj_solution_collection[t]
-        #     plt.plot(gs_track[:, 0], gs_track[:, 1], '--', color='black')
+        for t in range(self.num_step):
+            lt_track = self.agent_lt.trj_solution_collection[t]
+            axes[0].plot(lt_track[:, 0], lt_track[:, 1], '--', color='black', alpha=0.2)
+            gs_track = self.agent_gs.trj_solution_collection[t]
+            axes[0].plot(gs_track[:, 0], gs_track[:, 1], '--', color='black', alpha=0.2)
 
         # ----connect two agents
-        # for t in range(self.num_step + 1):
-        #     axes[0].plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
-        #                  [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
-        #                  color='black',
-        #                  alpha=0.2)
+        for t in range(self.num_step + 1):
+            axes[0].plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
+                         [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
+                         color='black',
+                         alpha=0.2)
 
         "---- show velocity ----"
         x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
@@ -642,18 +648,18 @@ def main1():
     tag = 'test'  # tag for data saving
 
     '---- set initial state of the left-turn vehicle ----'
-    init_position_lt = [11, -5.8]
-    init_velocity_lt = [1.5, 0.3]
+    init_position_lt = [11.7, -5]
+    init_velocity_lt = [1, 2]
     init_heading_lt = math.pi / 4
-    ipv_lt = 0
-    controller_type_lt = 'gt'
+    ipv_lt = 2 * math.pi / 8
+    controller_type_lt = 'opt'
 
     '---- set initial state of the go-straight vehicle ----'
-    init_position_gs = [22, -2]
+    init_position_gs = [19, -2]
     init_velocity_gs = [-3, 0]
     init_heading_gs = math.pi
-    ipv_gs = math.pi / 8
-    controller_type_gs = 'gt'
+    ipv_gs = 0 * math.pi / 8
+    controller_type_gs = 'opt'
 
     '---- generate scenario ----'
     simu_scenario = Scenario([init_position_lt, init_position_gs],
@@ -667,7 +673,7 @@ def main1():
     simu.initialize(simu_scenario, tag)
 
     time1 = time.perf_counter()
-    simu.interact(simu_step=10, iter_limit=10)
+    simu.interact(simu_step=10, iter_limit=5)
     time2 = time.perf_counter()
     print('time consumption: ', time2-time1)
 
