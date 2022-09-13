@@ -13,8 +13,8 @@ import viztracer
 import time
 
 # simulation setting
-dt = 0.2
-TRACK_LEN = 6
+dt = 0.12
+TRACK_LEN = 10
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 2
 
@@ -31,7 +31,7 @@ WEIGHT_GRP = 0.22
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
-MAX_ACCELERATION = 3.0
+MAX_ACCELERATION = 1.0
 
 # initial guess on interacting agent's IPV
 INITIAL_IPV_GUESS = 0

@@ -53,7 +53,7 @@ class Simulator:
         self.agent_gs.conl_type = self.scenario.conl_type['gs']
         self.tag = case_tag
 
-    def interact(self, simu_step=30, iter_limit=10, make_video=False, break_when_finish=False):
+    def interact(self, simu_step=30, iter_limit=3, make_video=False, break_when_finish=False):
         """
         Simulate the given scenario step by step
 
@@ -74,7 +74,7 @@ class Simulator:
 
         for t in range(self.num_step):
 
-            print('time_step: ', t, '/', self.num_step)
+            # print('time_step: ', t, '/', self.num_step)
             # if t == 5:
             #     print('debug!')
 
@@ -89,10 +89,10 @@ class Simulator:
                 self.agent_lt.ibr_interact(iter_limit=iter_limit)
 
             elif self.agent_lt.conl_type in {'linear-gt'}:
-                time1 = time.perf_counter()
+                # time1 = time.perf_counter()
                 self.agent_lt.linear_ibr_interact(iter_limit=iter_limit)
-                time2 = time.perf_counter()
-                print('time consumption: ', time2 - time1)
+                # time2 = time.perf_counter()
+                # print('time consumption: ', time2 - time1)
 
             elif self.agent_lt.conl_type in {'opt'}:
                 self.agent_lt.opt_plan()
@@ -464,12 +464,20 @@ class Simulator:
         nds_trj_lt = np.array(self.lt_actual_trj[:, 0:2])
         vel_ob_vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
         vel_nds_vel_norm_lt = np.linalg.norm(self.lt_actual_trj[:, 2:4], axis=1)
+        acc_ob_lt = (vel_ob_vel_norm_lt[1:]-vel_ob_vel_norm_lt[:-1])/0.12
+        acc_nds_lt = (vel_nds_vel_norm_lt[1:]-vel_nds_vel_norm_lt[:-1])/0.12
+        jerk_ob_lt = (acc_ob_lt[1:] - acc_ob_lt[:-1]) / 0.12
+        jerk_nds_lt = (acc_nds_lt[1:] - acc_nds_lt[:-1]) / 0.12
 
         # gs track (observed in simulation and ground truth in nds)
         ob_trj_gs = self.agent_gs.observed_trajectory[:, 0:2]
         nds_trj_gs = np.array(self.gs_actual_trj[:, 0:2])
         vel_ob_vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
         vel_nds_vel_norm_gs = np.linalg.norm(self.gs_actual_trj[:, 2:4], axis=1)
+        acc_ob_gs = (vel_ob_vel_norm_gs[1:] - vel_ob_vel_norm_gs[:-1]) / 0.12
+        acc_nds_gs = (vel_nds_vel_norm_gs[1:] - vel_nds_vel_norm_gs[:-1]) / 0.12
+        jerk_ob_gs = (acc_ob_gs[1:] - acc_ob_gs[:-1]) / 0.12
+        jerk_nds_gs = (acc_nds_gs[1:] - acc_nds_gs[:-1]) / 0.12
 
         "---- meta data ----"
         # 1
@@ -477,9 +485,9 @@ class Simulator:
 
         # ----semantic result
         seman_res_simu = self.semantic_result
-        semen_res_nds = get_semantic_result(nds_trj_lt, nds_trj_gs, case_type='nds')
+        seman_res_nds = get_semantic_result(nds_trj_lt, nds_trj_gs, case_type='nds')
         # 2
-        seman_right = bool(semen_res_nds == seman_res_simu)
+        seman_right = bool(seman_res_nds == seman_res_simu)
 
         # ----velocity
         # 3
@@ -513,7 +521,7 @@ class Simulator:
             ((ave_pos_dev_gs - np.linalg.norm(ob_trj_gs - nds_trj_gs, axis=1)) ** 2).sum()
             / np.size(ob_trj_gs, 0))
 
-        # ----PET
+        # ----APET
         apet_nds, _, _ = cal_pet(nds_trj_lt, nds_trj_gs, type_cal='apet')
         # 13
         min_apet_nds = apet_nds.min()
@@ -526,24 +534,61 @@ class Simulator:
         # 16
         mean_apet_simu = min(apet_simu.mean(), 15)
 
+        # ----PET
+        # 17
+        pet_nds, _ = cal_pet(nds_trj_lt, nds_trj_gs, type_cal='pet')
+        # 18
+        pet_simu, _ = cal_pet(ob_trj_lt, ob_trj_gs, type_cal='pet')
+
+        # ----max acc and jerk
+        # 19
+        max_acc_simu_lt = max(max(acc_ob_lt), -min(acc_ob_lt))
+        # 20
+        max_acc_simu_gs = max(max(acc_ob_gs), -min(acc_ob_gs))
+        # 21
+        max_acc_nds_lt = max(max(acc_nds_lt), -min(acc_nds_lt))
+        # 22
+        max_acc_nds_gs = max(max(acc_nds_gs), -min(acc_nds_gs))
+
+        # 23
+        max_jerk_simu_lt = max(max(jerk_ob_lt), -min(jerk_ob_lt))
+        # 24
+        max_jerk_simu_gs = max(max(jerk_ob_gs), -min(jerk_ob_gs))
+        # 25
+        max_jerk_nds_lt = max(max(jerk_nds_lt), -min(jerk_nds_lt))
+        # 26
+        max_jerk_nds_gs = max(max(jerk_nds_gs), -min(jerk_nds_gs))
+
         "---- sava data ----"
         # prepare data
-        df = pd.DataFrame([[case_id, seman_right,
+        df = pd.DataFrame([[case_id, seman_right, seman_res_simu,
                             mean_vel_simu_lt, mean_vel_nds_lt,
                             mean_vel_simu_gs, mean_vel_nds_gs,
                             vel_rmse_lt, vel_rmse_gs,
                             ave_pos_dev_lt, pos_rmse_lt,
                             ave_pos_dev_gs, pos_rmse_gs,
                             min_apet_nds, min_apet_simu,
-                            mean_apet_nds, mean_apet_simu], ],
-                          columns=['case id', 'semantic result',
+                            mean_apet_nds, mean_apet_simu,
+                            pet_nds, pet_simu,
+                            max_acc_simu_lt, max_acc_simu_gs,
+                            max_acc_nds_lt, max_acc_nds_gs,
+                            max_jerk_simu_lt, max_jerk_simu_gs,
+                            max_jerk_nds_lt, max_jerk_nds_gs
+                            ], ],
+                          columns=['case id', 'semantic', ' result',
                                    'simu. v. lt', 'nds v. lt',
                                    'simu. v. gs', 'nds v. gs',
                                    'v. RMSE lt', 'velocity RMSE gs',
                                    'ave. POS deviation lt', 'POS RMSE lt',
                                    'ave. POS deviation gs', 'POS RMSE gs',
                                    'MIN APET NDS', 'MIN APET SIMU',
-                                   'mean APET NDS', 'mean APET SIMU', ])
+                                   'mean APET NDS', 'mean APET SIMU',
+                                   'PET NDS', 'PET SIMU',
+                                   'MAX acc. SIMU lt', 'MAX acc. SIMU gs',
+                                   'MAX acc. NDS lt', 'MAX acc. NDS gs',
+                                   'MAX jerk SIMU lt', 'MAX jerk SIMU gs',
+                                   'MAX jerk NDS lt', 'MAX jerk NDS gs',
+                                   ])
 
         # write data
         if case_id == 0:
@@ -691,10 +736,11 @@ def main2():
            * 'opt' is the optimal controller work by solving single optimization
        """
 
-    model_type = 'gt'
+    model_type = 'opt'
 
     num_failed = 0
-    for case_id in {51}:
+    for case_id in range(130):
+    # for case_id in {35}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
@@ -723,10 +769,10 @@ def main2():
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
-                    simu.visualize(file_path='figures/')
-                    # simu.save_metadata(num_failed,
-                    #                    file_name='outputs/simulation_meta_data20220831.xlsx',
-                    #                    sheet_name=model_type + ' simulation')
+                    # simu.visualize(file_path='figures/')
+                    simu.save_metadata(num_failed,
+                                       file_name='outputs/simulation_meta_data20220911.xlsx',
+                                       sheet_name=model_type + ' simulation')
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
                     num_failed += 1
@@ -741,25 +787,25 @@ def main_test():
         * set lt agent as the vehicle under test (ipv=pi/4)
     """
 
-    bg_type = 'gt'
+    bg_type = 'linear-gt'
 
     num_failed = 0
 
-    # for case_id in range(130):
-    for case_id in {106}:
+    for case_id in range(130):
+    # for case_id in {106}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
             continue
         else:
-            tag = bg_type + '-test-lt-lattice' + str(case_id)
+            tag = bg_type + '-test-gs-lattice' + str(case_id)
             # tag = bg_type + '-' + str(case_id)
             print('start case:' + tag)
 
             simu = Simulator(case_id=case_id)
             simu.sim_type = 'nds'
-            controller_type_lt = 'lattice'
-            controller_type_gs = bg_type
+            controller_type_lt = bg_type
+            controller_type_gs = 'lattice'
             simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
             if simu_scenario:
                 simu.initialize(simu_scenario, tag)
@@ -770,17 +816,17 @@ def main_test():
                 try:
 
                     time1 = time.perf_counter()
-                    simu.interact(simu_step=5, make_video=False, break_when_finish=False)
+                    simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
                     time2 = time.perf_counter()
                     print('time consumption: ', time2 - time1)
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
-                    simu.visualize(file_path='figures/')
+                    # simu.visualize(file_path='figures/')
                     # simu.visualize(file_path='figures/' + bg_type + ' test lt lattice/')
-                    # simu.save_metadata(num_failed,
-                    #                    file_name='outputs/test_meta_data20220828.xlsx',
-                    #                    sheet_name=bg_type + '- test lt-lattice')
+                    simu.save_metadata(num_failed,
+                                       file_name='outputs/test_meta_data20220912-4.xlsx',
+                                       sheet_name=bg_type + '-test gs-lattice')
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
                     num_failed += 1
@@ -791,10 +837,10 @@ def main_test():
 
 if __name__ == '__main__':
     'simulate unprotected left-turn at a T-intersection'
-    main1()
+    # main1()
 
     'simulate with nds data from Jianhe-Xianxia intersection'
     # main2()
 
     'test lattice planner with trajectory replay'
-    # main_test()
+    main_test()
