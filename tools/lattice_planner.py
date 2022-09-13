@@ -23,7 +23,7 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
     ry = path_data[:, 1]
     cts_points = np.array([rx, ry])
     path_points = CalcRefLine(cts_points)
-    obstacles = [Obstacle([obs_data['px'], obs_data['py'], 0, 10, 1.5, obs_data['heading']])]
+    obstacles = [Obstacle([obs_data['px'], obs_data['py'], 0, 5, 1.5, obs_data['heading']])]
     # obstacles = [Obstacle([obs_data['px'], obs_data['py'], obs_data['v'], 3, 1.5, M_PI])]
     # obstacles = [Obstacle([9.4, 15.5, 0, 3, 1.5, M_PI / 6])]
 

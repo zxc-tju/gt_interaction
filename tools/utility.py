@@ -9,7 +9,7 @@ import scipy.signal
 from tools.Lattice import PathPoint
 
 
-def smooth_ployline(cv_init, point_num=100):
+def smooth_ployline(cv_init, point_num=1000):
     cv = cv_init
     list_x = cv[:, 0]
     list_y = cv[:, 1]
