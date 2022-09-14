@@ -105,17 +105,28 @@ class Simulator:
                 self.agent_lt.trj_solution = self.lt_actual_trj[t:t_end, :]
 
             elif self.agent_lt.conl_type in {'lattice'}:
-                path_point, _ = get_central_vertices('lt_nds', origin_point=self.agent_lt.position)
-                obstacle_data = {'px': self.agent_gs.position[0],
-                                 'py': self.agent_gs.position[1],
-                                 'v': np.linalg.norm(self.agent_gs.velocity),
-                                 'heading': self.agent_gs.heading}
-                initial_state = {'px': self.agent_lt.position[0],
-                                 'py': self.agent_lt.position[1],
-                                 'v': np.linalg.norm(self.agent_lt.velocity),
-                                 'heading': self.agent_lt.heading}
-                res = lattice_planning(path_point, obstacle_data, initial_state, show_res=False)
-                self.agent_lt.trj_solution = np.array(res[:self.agent_lt.track_len])
+                if not self.agent_lt.plan_count:
+                    path_point, _ = get_central_vertices('lt_nds', origin_point=self.agent_lt.observed_trajectory[0, 0:2])
+                    obstacle_data = {'px': self.agent_gs.position[0],
+                                     'py': self.agent_gs.position[1],
+                                     'v': np.linalg.norm(self.agent_gs.velocity),
+                                     'heading': self.agent_gs.heading}
+                    initial_state = {'px': self.agent_lt.position[0],
+                                     'py': self.agent_lt.position[1],
+                                     'v': np.linalg.norm(self.agent_lt.velocity),
+                                     'heading': self.agent_lt.heading}
+                    res, state = lattice_planning(path_point, obstacle_data, initial_state, show_res=False)
+                    if len(res) >= 3:
+                        self.agent_lt.trj_solution = np.array(res[:self.agent_lt.track_len])
+                        self.agent_lt.plan_count = 2
+                        if state == 'planning_back':
+                            self.agent_lt.plan_count = 7
+                    else:
+                        self.agent_lt.cruise_plan()
+
+                else:
+                    self.agent_lt.trj_solution = self.agent_lt.trj_solution[1:, :]
+                    self.agent_lt.plan_count = self.agent_lt.plan_count - 1
 
             "==plan for go straight=="
             if self.agent_gs.conl_type in {'gt'}:
@@ -141,17 +152,28 @@ class Simulator:
                 self.agent_gs.trj_solution = self.gs_actual_trj[t:t_end, :]
 
             elif self.agent_gs.conl_type in {'lattice'}:
-                path_point, _ = get_central_vertices('gs_nds', origin_point=self.agent_gs.position)
-                obstacle_data = {'px': self.agent_lt.position[0],
-                                 'py': self.agent_lt.position[1],
-                                 'v': np.linalg.norm(self.agent_lt.velocity),
-                                 'heading': self.agent_lt.heading}
-                initial_state = {'px': self.agent_gs.position[0],
-                                 'py': self.agent_gs.position[1],
-                                 'v': np.linalg.norm(self.agent_gs.velocity),
-                                 'heading': self.agent_gs.heading}
-                res = lattice_planning(path_point, obstacle_data, initial_state, show_res=False)
-                self.agent_gs.trj_solution = np.array(res[:self.agent_gs.track_len])
+                if not self.agent_gs.plan_count:
+                    path_point, _ = get_central_vertices('gs_nds', origin_point=self.agent_gs.position)
+                    obstacle_data = {'px': self.agent_lt.position[0],
+                                     'py': self.agent_lt.position[1],
+                                     'v': np.linalg.norm(self.agent_lt.velocity),
+                                     'heading': self.agent_lt.heading}
+                    initial_state = {'px': self.agent_gs.position[0],
+                                     'py': self.agent_gs.position[1],
+                                     'v': np.linalg.norm(self.agent_gs.velocity),
+                                     'heading': self.agent_gs.heading}
+                    res, state = lattice_planning(path_point, obstacle_data, initial_state, show_res=False)
+                    if len(res) >= 3:
+                        self.agent_gs.trj_solution = np.array(res[:self.agent_gs.track_len])
+                        self.agent_gs.plan_count = 2
+                        if state == 'planning_back':
+                            self.agent_gs.plan_count = 7
+                    else:
+                        self.agent_gs.cruise_plan()
+
+                else:
+                    self.agent_gs.trj_solution = self.agent_gs.trj_solution[1:, :]
+                    self.agent_gs.plan_count = self.agent_gs.plan_count - 1
 
             "==update state=="
             self.agent_lt.update_state(self.agent_gs)

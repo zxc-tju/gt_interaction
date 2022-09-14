@@ -94,8 +94,8 @@ def mass_point_model(u, init_state, TRACK_LEN, dt):
 
 
 def draw_rectangle(x, y, deg, ax, para_alpha=0.5, para_color='blue'):
-    car_len = 1.5
-    car_wid = 3
+    car_len = 1.2
+    car_wid = 2
     # fig = plt.figure()
     # ax = fig.add_subplot(111)
 
@@ -143,8 +143,8 @@ def CalcRefLine(cts_points):
     rkappa[-1] = rkappa[-2]
     rdkappa[-1] = rdkappa[-3]
     rdkappa[-2] = rdkappa[-3]
-    # rkappa = scipy.signal.savgol_filter(rkappa, 333, 5)
-    # rdkappa = scipy.signal.savgol_filter(rdkappa, 555, 5)
+    rkappa = scipy.signal.savgol_filter(rkappa, 333, 5)
+    rdkappa = scipy.signal.savgol_filter(rdkappa, 555, 5)
     # plt.figure(1)
     # plt.subplot(211)
     # plt.plot(rkappa)

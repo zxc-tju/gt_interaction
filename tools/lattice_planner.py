@@ -36,7 +36,7 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
         obstacle.MatchPath(path_points)
 
     theta_thr = M_PI / 6  # delta theta threhold, deviation from matched path
-    ttcs = [3, 4, 5]  # static ascending time-to-collision, sec
+    ttcs = [2, 3, 4, 5, 6, 7]  # static ascending time-to-collision, sec
 
     samp_basis = SampleBasis(traj_point, theta_thr, ttcs)
     local_planner = LocalPlanner(traj_point, path_points, obstacles, samp_basis)
@@ -73,7 +73,7 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
         plt.show()
         plt.pause(0.3)
 
-    return [[x[0], x[1], x[2]*np.cos(x[4]), x[2]*np.sin(x[4]), x[4]] for x in traj_points]
+    return [[x[0], x[1], x[2]*np.cos(x[4]), x[2]*np.sin(x[4]), x[4]] for x in traj_points], local_planner.status
 
 
 if __name__ == '__main__':
