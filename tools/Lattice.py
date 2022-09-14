@@ -20,7 +20,7 @@ MAX_A = 10
 MIN_A = -20
 MAX_LAT_A = 100 #参考apollo，横向约束应该是给到向心加速度，而不是角速度
 '''
-delta_t = 0.12  # fixed time between two consecutive trajectory points, sec
+delta_t = 0.2  # fixed time between two consecutive trajectory points, sec
 v_tgt = 6.0  # fixed target speed, m/s
 sight_range = 10  # 判断有无障碍物的视野距离
 
@@ -292,8 +292,8 @@ def CalcRefLine(cts_points):
     rkappa[-1] = rkappa[-2]
     rdkappa[-1] = rdkappa[-3]
     rdkappa[-2] = rdkappa[-3]
-    rkappa = scipy.signal.savgol_filter(rkappa, 33, 5)
-    rdkappa = scipy.signal.savgol_filter(rdkappa, 55, 5)
+    rkappa = scipy.signal.savgol_filter(rkappa, 333, 5)
+    rdkappa = scipy.signal.savgol_filter(rdkappa, 555, 5)
     # plt.figure(1)
     # plt.subplot(211)
     # plt.plot(rkappa)
@@ -573,7 +573,6 @@ class PolyTraj:
             s_cond = np.zeros(3)
             d_cond = np.zeros(3)
 
-            t = t + delta_t
             s_cond[0] = a0_s + a1_s * t + a2_s * t ** 2 + a3_s * t ** 3 + a4_s * t ** 4 + a5_s * t ** 5
             s_cond[1] = a1_s + 2 * a2_s * t + 3 * a3_s * t ** 2 + 4 * a4_s * t ** 3 + 5 * a5_s * t ** 4
             s_cond[2] = 2 * a2_s + 6 * a3_s * t + 12 * a4_s * t ** 2 + 20 * a5_s * t ** 3
@@ -600,6 +599,9 @@ class PolyTraj:
             traj_point = FrenetToCartesian(path_point_inter, s_cond, d_cond)
             # traj_point.v = v_tgt
             tp_all.append(traj_point)
+
+            t = t + delta_t
+
         self.tp_all = tp_all
         return tp_all
 
