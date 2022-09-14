@@ -243,6 +243,12 @@ class Agent:
                                        new_velocity[1],
                                        new_heading]])
 
+    def cruise_plan(self):
+        p, v, h = self.position, self.velocity, self.heading
+        init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
+
+        self.trj_solution = np.array([init_state_4_kine, [p[0] + dt * v[0], p[1] + dt * v[1], v[0], v[1], h]])
+
     def solve_optimization(self, inter_track):
         """
         Solve optimization to output best solution given interacting counterpart's track
