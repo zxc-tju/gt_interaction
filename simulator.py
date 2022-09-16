@@ -74,8 +74,8 @@ class Simulator:
 
         for t in range(self.num_step):
 
-            # print('time_step: ', t, '/', self.num_step)
-            # if t == 5:
+            print('time_step: ', t, '/', self.num_step)
+            # if t == 28:
             #     print('debug!')
 
             "==plan for left-turn=="
@@ -139,6 +139,7 @@ class Simulator:
 
             elif self.agent_gs.conl_type in {'linear-gt'}:
                 self.agent_gs.linear_ibr_interact()
+                # print(self.agent_gs.trj_solution)
 
             elif self.agent_gs.conl_type in {'opt'}:
                 self.agent_gs.opt_plan()
@@ -209,7 +210,7 @@ class Simulator:
                                para_alpha=1, para_color='#7030A0')
                 ax.axis('scaled')
                 plt.show()
-                plt.pause(0.1)
+                plt.pause(0.0001)
                 plt.savefig('figures/' + self.tag + '-' + str(t) + '.png', dpi=300)
 
             if break_when_finish:
@@ -223,7 +224,7 @@ class Simulator:
         cv_lt = []
         cv_gs = []
         # set figures
-        fig, axes = plt.subplots(1, 2, figsize=[8, 4])
+        fig, axes = plt.subplots(1, 2, figsize=[32, 16])
         fig.suptitle('trajectory_LT_' + self.semantic_result)
         axes[0].set_title('trajectory')
         axes[1].set_title('velocity')
@@ -302,23 +303,24 @@ class Simulator:
                         color='#7030A0',
                         label='go-straight simulation')
 
-        if self.sim_type == 'nds':
-            axes[0].scatter(lt_nds_trj[:num_frame, 0],
-                            lt_nds_trj[:num_frame, 1],
-                            s=50,
-                            alpha=0.3,
-                            color='blue',
-                            label='left-turn NDS')
-            axes[0].scatter(gs_nds_trj[:num_frame, 0],
-                            gs_nds_trj[:num_frame, 1],
-                            s=50,
-                            alpha=0.3,
-                            color='red',
-                            label='go-straight NDS')
+        # if self.sim_type == 'nds':
+        #     axes[0].scatter(lt_nds_trj[:num_frame, 0],
+        #                     lt_nds_trj[:num_frame, 1],
+        #                     s=50,
+        #                     alpha=0.3,
+        #                     color='blue',
+        #                     label='left-turn NDS')
+        #     axes[0].scatter(gs_nds_trj[:num_frame, 0],
+        #                     gs_nds_trj[:num_frame, 1],
+        #                     s=50,
+        #                     alpha=0.3,
+        #                     color='red',
+        #                     label='go-straight NDS')
 
         # ----full tracks at each time step
         for t in range(self.num_step):
-            if int(t/2) == t/2:
+            # if int(t/2) == t/2:
+            if t in {9, 10, 11, 12, 13}:
                 lt_track = self.agent_lt.trj_solution_collection[t]
                 axes[0].plot(lt_track[:, 0], lt_track[:, 1], '--', color='black', alpha=0.5)
                 gs_track = self.agent_gs.trj_solution_collection[t]
@@ -334,7 +336,7 @@ class Simulator:
         for t in range(self.num_step + 1):
             axes[0].plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
                          [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
-                         color='black',
+                         color='gray',
                          alpha=0.2)
 
         "---- show velocity ----"
@@ -354,6 +356,7 @@ class Simulator:
         axes[0].legend()
         plt.show()
         plt.savefig(file_path + self.tag + '-final.png', dpi=600)
+        plt.savefig(file_path + self.tag + '-final.svg')
         # plt.close()
 
     def read_nds_scenario(self, controller_type_lt, controller_type_gs):
@@ -363,6 +366,7 @@ class Simulator:
         # 7-ipv_gs | ipv_gs_error | gs_px | gs_py  | gs_vx  | gs_vy  | gs_heading  |
 
         if cross_id == -1:
+            print('-----no trajectory crossed in case' + str(self.case_id))
             return None
         else:
             init_position_lt = [data_cross[0, 2] - 13, data_cross[0, 3] - 7.8]
@@ -726,14 +730,14 @@ def main1():
     init_velocity_lt = [1, 2]
     init_heading_lt = math.pi / 4
     ipv_lt = 2 * math.pi / 8
-    controller_type_lt = 'opt'
+    controller_type_lt = 'linear-gt'
 
     '---- set initial state of the go-straight vehicle ----'
     init_position_gs = [19, -2]
     init_velocity_gs = [-3, 0]
     init_heading_gs = math.pi
     ipv_gs = 0 * math.pi / 8
-    controller_type_gs = 'opt'
+    controller_type_gs = 'linear-gt'
 
     '---- generate scenario ----'
     simu_scenario = Scenario([init_position_lt, init_position_gs],
@@ -747,7 +751,7 @@ def main1():
     simu.initialize(simu_scenario, tag)
 
     time1 = time.perf_counter()
-    simu.interact(simu_step=10, iter_limit=5)
+    simu.interact(simu_step=20, iter_limit=5)
     time2 = time.perf_counter()
     print('time consumption: ', time2-time1)
 
@@ -760,20 +764,27 @@ def main2():
     """
        === main for simulating unprotected left-turning scenarios in Jianhe-Xianxia dataset ===
        1. Set case_id to get initial scenarios state of a single case
-       2. Change controller type by manually setting controller_type_xx as 'gt' or 'opt'
+       2. Set dt as 0.12 (in agent.py) before simulation
+       3. Change controller type by manually setting controller_type_xx as:
            * 'gt' is the game-theoretic planner work by solving IBR process
            * 'opt' is the optimal controller work by solving single optimization
+           * 'idm'
+           * 'replay'
+           * 'linear-gt'
        """
 
-    model_type = 'opt'
+    model_type = 'linear-gt'
 
     num_failed = 0
-    for case_id in range(130):
-    # for case_id in {35}:
+    # for case_id in range(130):
+    for case_id in {51}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
             continue
+        elif case_id in {12, 13, 24, 26, 28, 31, 32, 33, 37, 38, 46, 47, 48, 52, 56, 59, 65, 66, 69, 77, 82, 83, 84, 90, 91,
+                         92, 94, 96, 97, 98, 100}:  # no path-crossing event
+            num_failed += 1
         else:
             tag = 'simu-' + model_type + str(case_id)
 
@@ -790,18 +801,22 @@ def main2():
                 simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
                 simu.agent_lt.target = 'lt_nds'
                 simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
+
+                simu.agent_gs.estimated_inter_agent.ipv = simu.agent_lt.ipv
+                simu.agent_lt.estimated_inter_agent.ipv = simu.agent_gs.ipv
+
                 try:
                     time1 = time.perf_counter()
-                    simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+                    simu.interact(simu_step=3, make_video=False, break_when_finish=False)
                     time2 = time.perf_counter()
                     print('time consumption: ', time2 - time1)
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
-                    # simu.visualize(file_path='figures/')
-                    simu.save_metadata(num_failed,
-                                       file_name='outputs/simulation_meta_data20220911.xlsx',
-                                       sheet_name=model_type + ' simulation')
+                    # simu.visualize(file_path='figures/nds simu linear-gt/')
+                    # simu.save_metadata(num_failed,
+                    #                    file_name='outputs/simulation_meta_data20220911.xlsx',
+                    #                    sheet_name=model_type + ' simulation')
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
                     num_failed += 1
@@ -820,21 +835,25 @@ def main_test():
 
     num_failed = 0
 
-    for case_id in range(130):
-    # for case_id in {106}:
+    # for case_id in range(130):
+    for case_id in {51}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
             continue
+        elif case_id in {12, 13, 24, 26, 28, 31, 32, 33, 37, 38, 46, 47, 48, 52, 56, 59, 65, 66, 69, 77, 82, 83, 84, 90, 91,
+                         92, 94, 96, 97, 98, 100}:  # no path-crossing event
+            num_failed += 1
+            continue
         else:
-            tag = bg_type + '-test-gs-lattice' + str(case_id)
+            tag = bg_type + '-test-lt-lattice' + str(case_id)
             # tag = bg_type + '-' + str(case_id)
             print('start case:' + tag)
 
             simu = Simulator(case_id=case_id)
             simu.sim_type = 'nds'
-            controller_type_lt = bg_type
-            controller_type_gs = 'lattice'
+            controller_type_lt = 'lattice'
+            controller_type_gs = bg_type
             simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
             if simu_scenario:
                 simu.initialize(simu_scenario, tag)
@@ -845,17 +864,18 @@ def main_test():
                 try:
 
                     time1 = time.perf_counter()
-                    simu.interact(simu_step=simu.case_len - 1, make_video=False, break_when_finish=False)
+                    # simu.interact(simu_step=2, make_video=False, break_when_finish=False)
+                    simu.interact(simu_step=int(simu.case_len/2+5), make_video=False, break_when_finish=False)
                     time2 = time.perf_counter()
                     print('time consumption: ', time2 - time1)
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
-                    # simu.visualize(file_path='figures/')
+                    simu.visualize(file_path='figures/')
                     # simu.visualize(file_path='figures/' + bg_type + ' test lt lattice/')
-                    simu.save_metadata(num_failed,
-                                       file_name='outputs/test_meta_data20220912-4.xlsx',
-                                       sheet_name=bg_type + '-test gs-lattice')
+                    # simu.save_metadata(num_failed,
+                    #                    file_name='outputs/test_meta_data20220912-4.xlsx',
+                    #                    sheet_name=bg_type + '-test gs-lattice')
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
                     num_failed += 1
@@ -869,7 +889,7 @@ if __name__ == '__main__':
     # main1()
 
     'simulate with nds data from Jianhe-Xianxia intersection'
-    # main2()
+    main2()
 
     'test lattice planner with trajectory replay'
-    main_test()
+    # main_test()

@@ -13,7 +13,7 @@ import viztracer
 import time
 
 # simulation setting
-dt = 0.12
+dt = 0.2
 TRACK_LEN = 10
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 2
@@ -66,6 +66,7 @@ class Agent:
         self.ipv_collection = []
         self.ipv_error_collection = []
         self.virtual_track_collection = []
+        self.plan_count = 0
 
     def ibr_interact_with_virtual_agents(self, agent_inter, iter_limit=10):
         """
@@ -146,9 +147,14 @@ class Agent:
 
         record_track_inter = np.zeros([TRACK_LEN, 2])
 
+        # fig_id = 0  # id for recording figures
+
         # plan for interacting agent
-        last_track_inter = self.estimated_inter_agent. \
+        new_track_inter = self.estimated_inter_agent. \
             solve_linear_optimization(last_track_inter[:, 0:2], last_track_self[:, 0:2])
+        # self.estimated_inter_agent.in_loop_draw(last_track_inter, last_track_self, fig_id)
+        # fig_id += 1
+        last_track_inter = new_track_inter
 
         count_iter = 0  # count number of iteration
         while (np.linalg.norm(record_track_inter - last_track_inter) > 1e-3) \
@@ -156,11 +162,17 @@ class Agent:
             count_iter += 1
 
             # plan for subjective agent
-            last_track_self = self.solve_linear_optimization(last_track_self, last_track_inter)
+            new_track_self = self.solve_linear_optimization(last_track_self, last_track_inter)
+            # self.in_loop_draw(last_track_self, last_track_inter, fig_id)
+            # fig_id += 1
+            last_track_self = new_track_self
 
             #  plan for interacting agent
-            last_track_inter = self.estimated_inter_agent. \
+            new_track_inter = self.estimated_inter_agent. \
                 solve_linear_optimization(last_track_inter, last_track_self)
+            # self.estimated_inter_agent.in_loop_draw(last_track_inter, last_track_self, fig_id)
+            # fig_id += 1
+            last_track_inter = new_track_inter
 
         #  final plan for subjective agent
         self.solve_linear_optimization(last_track_self, last_track_inter)
@@ -291,9 +303,9 @@ class Agent:
 
         # constraints (collision avoidance)
         ineq_cons = {
-                'type': 'ineq',
-                'fun': lambda u: collision_cons(u, init_state_4_kine, last_track_self, last_track_inter)
-            }
+            'type': 'ineq',
+            'fun': lambda u: collision_cons(u, init_state_4_kine, last_track_self, last_track_inter, self.ipv)
+        }
 
         # initial solution
         u0 = 0.1 * np.ones([(2 * TRACK_LEN - 2), 1])
@@ -305,7 +317,7 @@ class Agent:
         fun = linear_utility_fun(opt_params, last_track_self, last_track_inter)
 
         # time1 = time.perf_counter()
-        res = minimize(fun, u0, bounds=bds,  constraints=ineq_cons)
+        res = minimize(fun, u0, bounds=bds, constraints=ineq_cons)
         # res = minimize(fun, u0, bounds=bds)
         # time2 = time.perf_counter()
         # print(time2 - time1)
@@ -368,6 +380,7 @@ class Agent:
         self.observed_trajectory = np.concatenate((self.observed_trajectory, new_track_point), axis=0)
 
         self.trj_solution_collection.append(self.trj_solution)
+        self.estimated_inter_agent.trj_solution_collection.append(self.estimated_inter_agent.trj_solution)
         self.action_collection.append(self.action)
 
         if self.conl_type in {'gt'}:
@@ -437,40 +450,54 @@ class Agent:
                      [self.trj_solution[t, 1], self.estimated_inter_agent.trj_solution[t, 1]], alpha=0.2, color='black')
 
             plt.axis('equal')
-            plt.xlim(5, 25)
-            plt.ylim(-10, 10)
-            # plt.pause(0.01)
+            plt.xlim(5, 20)
+            plt.ylim(-8, 5)
+            # plt.savefig('./figures/' + 'final.png', dpi=600)
 
         plt.title('gs ipv: ' + str(self.estimated_inter_agent.ipv) + '--lt ipv: ' + str(self.ipv))
         plt.show()
 
-    def in_loop_draw(self, last_track_self, last_track_inter):
+    def in_loop_draw(self, last_track_self, last_track_inter, fig_id=None):
         plt.figure()
         cv_init_it, _ = get_central_vertices('lt')
         cv_init_gs, _ = get_central_vertices('gs')
         plt.plot(cv_init_it[:, 0], cv_init_it[:, 1], 'r-', alpha=0.2)
         plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], 'b-', alpha=0.2)
 
-        plt.scatter(self.trj_solution[:, 0], self.trj_solution[:, 1], color='black')
-        plt.plot(last_track_self[:, 0], last_track_self[:, 1], 'red')
-        plt.plot(last_track_inter[:, 0], last_track_inter[:, 1], 'blue')
+        if self.target == 'gs':
+            point_color_self = 'blue'
+            point_color_inter = 'red'
+        else:
+            point_color_self = 'red'
+            point_color_inter = 'blue'
+
+        # plt.scatter(self.trj_solution[:, 0], self.trj_solution[:, 1], color=point_color_self, alpha=0.5)
+        plt.plot(last_track_self[:, 0], last_track_self[:, 1], point_color_self)
+        plt.plot(last_track_inter[:, 0], last_track_inter[:, 1], point_color_inter)
         plt.axis('equal')
-        plt.xlim(5, 25)
-        plt.ylim(-10, 10)
+        plt.xlim(5, 20)
+        plt.ylim(-8, 5)
 
         plt.show()
+        if fig_id:
+            plt.savefig('./figures/' + str(fig_id) + '.png', dpi=600)
 
 
-def collision_cons(u, init_state_4_kine, last_track_self, last_track_inter):
+def collision_cons(u, init_state_4_kine, last_track_self, last_track_inter, ipv):
     min_dis = MIN_DIS
 
     track_info_self = mass_point_model(u, init_state_4_kine, TRACK_LEN, dt)
     new_track_self = track_info_self[:, 0:2]
     cons = []
+
+    selfishness = 1
+    if ipv < 0:
+        selfishness = math.cos(ipv)
+
     for i in range(TRACK_LEN - 1):
         direction_vector = (last_track_self[i, :] - last_track_inter[i, :]) \
                            / np.linalg.norm(last_track_self[i, :] - last_track_inter[i, :])
-        cons.append(np.dot(direction_vector, (new_track_self[i, :]-last_track_inter[i, :]))-min_dis)
+        cons.append(np.dot(direction_vector, (new_track_self[i, :] - last_track_inter[i, :])) - min_dis * selfishness)
     return np.array(cons)
 
 
@@ -488,13 +515,13 @@ def linear_utility_fun(opt_params, last_track_self, last_track_inter):
         init_state_4_kine = [p[0], p[1], v[0], v[1], h]
         track_info_self = mass_point_model(u, init_state_4_kine, TRACK_LEN, dt)
         new_track_self = track_info_self[:, 0:2]
-        util = cal_linear_util(new_track_self, self_info[3], last_track_params, last_track_self, last_track_inter)
+        util = cal_linear_util(u, new_track_self, self_info[3], last_track_params, last_track_self, last_track_inter)
         return util
 
     return fun
 
 
-def cal_linear_util(new_track, self_ipv, last_track_params, last_track, last_track_inter):
+def cal_linear_util(u, new_track, self_ipv, last_track_params, last_track, last_track_inter):
     """
 
     Parameters
@@ -527,7 +554,7 @@ def cal_linear_util(new_track, self_ipv, last_track_params, last_track, last_tra
                + abs(np.dot(vec_n[-2, :], new_track[-2, :] - tao[-2, :]))
 
     '---- define reward of travel progress ----'
-    travel_progress = np.dot(vec_t[-1], (new_track[-1]-last_track[-1])) / \
+    travel_progress = np.dot(vec_t[-1], (new_track[-1] - last_track[-1])) / \
                       (1 + kappa[-1] * np.dot((tao[-1] - last_track[-1, :]), vec_n[-1, :]))
 
     '---- interacting agent reward ----'
@@ -536,12 +563,12 @@ def cal_linear_util(new_track, self_ipv, last_track_params, last_track, last_tra
         if miu[k]:
             r_other = r_other + \
                       miu[k] / np.linalg.norm(last_track[k, :] - last_track_inter[k, :]) \
-                      * np.dot((last_track[k, :] - last_track_inter[k, :]), (new_track[k, :]-last_track[k, :]))
+                      * np.dot((last_track[k, :] - last_track_inter[k, :]), (new_track[k, :] - last_track[k, :]))
 
     '---- jerk'
-    # c_jerk = sum(abs(u[1:]-u[:-1]))
+    c_jerk = sum(abs(u[1:]-u[:-1]))
 
-    return math.cos(self_ipv) * (2 * c_dev_cv - travel_progress) - math.sin(self_ipv) * 3 * r_other
+    return math.cos(self_ipv) * (4 * c_dev_cv - travel_progress) - math.sin(self_ipv) * 3 * r_other
 
 
 def utility_fun(self_info, track_inter):
@@ -728,20 +755,20 @@ def game_thread(agent, agent_iter, iter_limit=10):
 if __name__ == '__main__':
     '---- set initial state of the left-turn vehicle ----'
     init_position_lt = [11.7, -5]
-    init_velocity_lt = [1, 2]
+    init_velocity_lt = [1, 3]
     init_heading_lt = math.pi / 4
 
     '---- set initial state of the go-straight vehicle ----'
     init_position_gs = [19, -2]
-    init_velocity_gs = [-3, 0]
+    init_velocity_gs = [-4, 0]
     init_heading_gs = math.pi
 
     agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt')
     agent_gs = Agent(init_position_gs, init_velocity_gs, init_heading_gs, 'gs')
     agent_lt.estimated_inter_agent = copy.deepcopy(agent_gs)
 
-    agent_lt.ipv = 2 * math.pi / 8
-    agent_lt.estimated_inter_agent.ipv = -1 * math.pi / 8
+    agent_lt.ipv = -1 * math.pi / 8
+    agent_lt.estimated_inter_agent.ipv = 1 * math.pi / 8
 
     agent_lt.linear_ibr_interact(iter_limit=5)
 
