@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 from scipy.optimize import minimize
-from tools.utility import get_central_vertices, kinematic_model, mass_point_model, get_intersection_point, CalcRefLine
+from tools.utility import get_central_vertices, bicycle_model, mass_point_model, get_intersection_point, CalcRefLine
 from tools.Lattice import TrajPoint
 import copy
 from concurrent.futures import ProcessPoolExecutor
@@ -13,10 +13,10 @@ import viztracer
 import time
 
 # simulation setting
-dt = 0.2
-TRACK_LEN = 10
+dt = 0.3
+TRACK_LEN = 15
 MAX_DELTA_UT = 1e-4
-MIN_DIS = 2
+MIN_DIS = 3
 
 # weights for calculate interior cost
 WEIGHT_DELAY = 0.3
@@ -30,8 +30,9 @@ WEIGHT_GRP = 0.22
 # WEIGHT_GRP = 0.4
 
 # parameters of action bounds
-MAX_STEERING_ANGLE = math.pi / 6
+MAX_STEERING_ANGLE = math.pi / 4
 MAX_ACCELERATION = 1.0
+MAX_JERK = 2.0
 
 # initial guess on interacting agent's IPV
 INITIAL_IPV_GUESS = 0
@@ -43,10 +44,11 @@ sigma2 = 0.05
 
 
 class Agent:
-    def __init__(self, position, velocity, heading, target):
+    def __init__(self, position, velocity, heading, target, acceleration=None):
         self.position = position
         self.velocity = velocity
         self.heading = heading
+        self.acceleration = acceleration
         self.target = target
         self.track_len = TRACK_LEN
         # conducted trajectory
@@ -135,14 +137,19 @@ class Agent:
         """
         p, v, h = self.position, self.velocity, self.heading
         init_state = [p[0], p[1], v[0], v[1], h]  # initial state
-        last_track_self = mass_point_model(np.zeros([TRACK_LEN * 2 - 2]), init_state, TRACK_LEN, dt)
+
+        # last_track_self = mass_point_model(np.zeros([TRACK_LEN * 2 - 2]), init_state, TRACK_LEN, dt)
+        last_track_self = bicycle_model(np.zeros([TRACK_LEN * 2 - 2]), init_state, TRACK_LEN, dt)
         last_track_self = last_track_self[:, 0:2]
 
         p, v, h = self.estimated_inter_agent.position, \
                   self.estimated_inter_agent.velocity, \
                   self.estimated_inter_agent.heading
         init_state = [p[0], p[1], v[0], v[1], h]  # initial state
-        last_track_inter = mass_point_model(np.zeros([TRACK_LEN * 2 - 2]), init_state, TRACK_LEN, dt)
+
+        # last_track_inter = mass_point_model(np.zeros([TRACK_LEN * 2 - 2]), init_state, TRACK_LEN, dt)
+        last_track_inter = bicycle_model(np.zeros([TRACK_LEN * 2 - 2]), init_state, TRACK_LEN, dt)
+
         last_track_inter = last_track_inter[:, 0:2]
 
         record_track_inter = np.zeros([TRACK_LEN, 2])
@@ -151,7 +158,7 @@ class Agent:
 
         # plan for interacting agent
         new_track_inter = self.estimated_inter_agent. \
-            solve_linear_optimization(last_track_inter[:, 0:2], last_track_self[:, 0:2])
+            solve_linearized_optimization(last_track_inter[:, 0:2], last_track_self[:, 0:2])
         # self.estimated_inter_agent.in_loop_draw(last_track_inter, last_track_self, fig_id)
         # fig_id += 1
         last_track_inter = new_track_inter
@@ -162,20 +169,22 @@ class Agent:
             count_iter += 1
 
             # plan for subjective agent
-            new_track_self = self.solve_linear_optimization(last_track_self, last_track_inter)
+            new_track_self = self.solve_linearized_optimization(last_track_self, last_track_inter)
             # self.in_loop_draw(last_track_self, last_track_inter, fig_id)
             # fig_id += 1
             last_track_self = new_track_self
 
             #  plan for interacting agent
             new_track_inter = self.estimated_inter_agent. \
-                solve_linear_optimization(last_track_inter, last_track_self)
+                solve_linearized_optimization(last_track_inter, last_track_self)
             # self.estimated_inter_agent.in_loop_draw(last_track_inter, last_track_self, fig_id)
             # fig_id += 1
             last_track_inter = new_track_inter
 
         #  final plan for subjective agent
-        self.solve_linear_optimization(last_track_self, last_track_inter)
+
+        # with viztracer.VizTracer():
+        self.solve_linearized_optimization(last_track_self, last_track_inter)
         # self.in_loop_draw(last_track_self, last_track_inter)
 
     def opt_plan(self):
@@ -283,14 +292,20 @@ class Agent:
         bds = bds_acc + bds_str
 
         fun = utility_fun(self_info, inter_track)  # objective function
+        # time1 = time.perf_counter()
         res = minimize(fun, u0, bounds=bds, method='SLSQP')
+        # time2 = time.perf_counter()
+        # print(time2 - time1)
 
         x = np.reshape(res.x, [2, track_len - 1]).T
         self.action = x
-        self.trj_solution = kinematic_model(x, init_state_4_kine, track_len, dt)  # get trajectory
+
+        # self.trj_solution = mass_point_model(x, init_state_4_kine, track_len, dt)  # get trajectory
+        self.trj_solution = bicycle_model(x, init_state_4_kine, track_len, dt)  # get trajectory
+
         return self.trj_solution
 
-    def solve_linear_optimization(self, last_track_self, last_track_inter):
+    def solve_linearized_optimization(self, last_track_self, last_track_inter):
         """
         Solve optimization to output best solution given interacting counterpart's track
         """
@@ -301,31 +316,31 @@ class Agent:
         opt_params = self.get_opt_params(last_track_self, last_track_inter)
         opt_params = [[p, v, h, self.ipv], opt_params]
 
-        # constraints (collision avoidance)
         ineq_cons = {
             'type': 'ineq',
-            'fun': lambda u: collision_cons(u, init_state_4_kine, last_track_self, last_track_inter, self.ipv)
-        }
+            'fun': lambda u: collision_cons(u, init_state_4_kine, last_track_self, last_track_inter, self.ipv)}
 
         # initial solution
         u0 = 0.1 * np.ones([(2 * TRACK_LEN - 2), 1])
 
         # boundary
-        bds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(2 * TRACK_LEN - 2)]
+        # bds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(2 * TRACK_LEN - 2)]
+        bds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(TRACK_LEN - 1)] + \
+              [(-MAX_STEERING_ANGLE, MAX_STEERING_ANGLE) for _ in range(TRACK_LEN - 1)]
 
         # objective function
         fun = linear_utility_fun(opt_params, last_track_self, last_track_inter)
 
         # time1 = time.perf_counter()
         res = minimize(fun, u0, bounds=bds, constraints=ineq_cons)
-        # res = minimize(fun, u0, bounds=bds)
         # time2 = time.perf_counter()
         # print(time2 - time1)
 
         x = res.x
         self.action = x
-        self.trj_solution = mass_point_model(x, init_state_4_kine, TRACK_LEN, dt)  # get trajectory
 
+        # self.trj_solution = mass_point_model(x, init_state_4_kine, TRACK_LEN, dt)  # get trajectory
+        self.trj_solution = bicycle_model(x, init_state_4_kine, TRACK_LEN, dt)  # get trajectory
         # self.in_loop_draw(last_track_self, last_track_inter)
 
         return self.trj_solution[:, 0:2]
@@ -335,7 +350,7 @@ class Agent:
         # calculate model parameters
         dis_ps2pi = np.linalg.norm(last_track_self - last_track_inter, axis=1)
         miu = np.zeros_like(dis_ps2pi)
-        miu[np.where(dis_ps2pi - MIN_DIS < 0.5)] = 1
+        miu[np.where(dis_ps2pi - MIN_DIS < 0)] = 1
 
         if self.target in {'gs_nds', 'lt_nds'}:
             cv, _ = get_central_vertices(self.target, last_track_self[0, :])
@@ -383,21 +398,24 @@ class Agent:
         self.estimated_inter_agent.trj_solution_collection.append(self.estimated_inter_agent.trj_solution)
         self.action_collection.append(self.action)
 
-        if self.conl_type in {'gt'}:
-            # update IPV
-            current_time = np.size(self.observed_trajectory, 0) - 2
-            if current_time > 1:
-                start_time = max(0, current_time - 6)
-                time_duration = current_time - start_time
+        # update IPV
+        current_time = np.size(self.observed_trajectory, 0) - 2
+        if current_time > 1:
+            start_time = max(0, current_time - 6)
+            time_duration = current_time - start_time
+
+            actual_track_self = self.observed_trajectory[start_time:current_time, 0:2]
+            actual_track_inter = inter_agent.observed_trajectory[start_time:current_time, 0:2]
+
+            if self.conl_type in {'gt'}:
 
                 "====parallel game method===="
                 candidates = self.estimated_inter_agent.virtual_track_collection[start_time]
                 virtual_track_collection = []
                 for i in range(len(candidates)):
                     virtual_track_collection.append(candidates[i][0:time_duration, 0:2])
-                actual_track = inter_agent.observed_trajectory[start_time:current_time, 0:2]
 
-                ipv_weight = cal_reliability([], actual_track, virtual_track_collection, [])
+                ipv_weight = cal_traj_reliability([], actual_track_inter, virtual_track_collection, [])
 
                 # weighted sum of all candidates' IPVs
                 self.estimated_inter_agent.ipv = sum(virtual_agent_IPV_range * ipv_weight)
@@ -407,6 +425,14 @@ class Agent:
                 error = 1 - np.sqrt(sum(ipv_weight ** 2))
                 self.estimated_inter_agent.ipv_error_collection.append(error)
                 "====end of parallel game method===="
+
+            # if self.conl_type in {'linear-gt'}:
+            #
+            #     "====maximum entropy method"
+            #     candidates = [i * math.pi / 8 for i in range(-3, 4)]
+            #     print(candidates)
+            #     for inter_ipv in candidates:
+            #         weight = math.exp(cal_ipv_reliability(inter_ipv, actual_track_inter, actual_track_self))
 
     def estimate_self_ipv_in_nds(self, self_actual_track, inter_track):
         self_virtual_track_collection = []
@@ -421,10 +447,7 @@ class Agent:
             self.virtual_track_collection.append(virtual_track_temp[:, 0:2])
 
         # calculate reliability of each track
-        ipv_weight = cal_reliability([],
-                                     self_actual_track,
-                                     self.virtual_track_collection,
-                                     self.target)
+        ipv_weight = cal_traj_reliability([], self_actual_track, self.virtual_track_collection, self.target)
 
         # weighted sum of all candidates' IPVs
         self.ipv = sum(ipv_range * ipv_weight)
@@ -436,12 +459,12 @@ class Agent:
 
     def draw(self):
         plt.figure()
-        cv_init_it, _ = get_central_vertices('lt')
+        cv_init_lt, _ = get_central_vertices('lt')
         cv_init_gs, _ = get_central_vertices('gs')
         plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], 'b--')
+        plt.plot(cv_init_lt[:, 0], cv_init_lt[:, 1], 'r--')
+
         for t in range(np.size(self.trj_solution, 0)):
-            plt.plot(cv_init_it[:, 0], cv_init_it[:, 1], 'r-')
-            plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], 'b-')
             plt.plot(self.trj_solution[t, 0], self.trj_solution[t, 1], 'r*')
             plt.plot(self.estimated_inter_agent.trj_solution[t, 0],
                      self.estimated_inter_agent.trj_solution[t, 1], 'b*')
@@ -453,6 +476,12 @@ class Agent:
             plt.xlim(5, 20)
             plt.ylim(-8, 5)
             # plt.savefig('./figures/' + 'final.png', dpi=600)
+
+        dis = np.linalg.norm(self.trj_solution[:, 0:2] - self.estimated_inter_agent.trj_solution[:, 0:2], axis=1)
+        index = np.where(dis == min(dis))
+        plt.scatter((self.trj_solution[index, 0] + self.estimated_inter_agent.trj_solution[index, 0]) / 2,
+                    (self.trj_solution[index, 1] + self.estimated_inter_agent.trj_solution[index, 1]) / 2)
+        plt.text(16, 4, 'min distance: %.2f' % min(dis))
 
         plt.title('gs ipv: ' + str(self.estimated_inter_agent.ipv) + '--lt ipv: ' + str(self.ipv))
         plt.show()
@@ -485,8 +514,8 @@ class Agent:
 
 def collision_cons(u, init_state_4_kine, last_track_self, last_track_inter, ipv):
     min_dis = MIN_DIS
-
-    track_info_self = mass_point_model(u, init_state_4_kine, TRACK_LEN, dt)
+    # track_info_self = mass_point_model(u, init_state_4_kine, TRACK_LEN, dt)
+    track_info_self = bicycle_model(u, init_state_4_kine, TRACK_LEN, dt)
     new_track_self = track_info_self[:, 0:2]
     cons = []
 
@@ -506,14 +535,14 @@ def linear_utility_fun(opt_params, last_track_self, last_track_inter):
         """
         Calculate the utility from the perspective of "self" agent
 
-        :param u: num_step by 4 array, where the 1\2 columns are control of "self" agent
-                  and 3\4 columns control of "interacting" agent
+        :param u: num_step by 4 array, control of "self" agent
         :return: utility of the "self" agent under the control u
         """
         self_info, last_track_params = opt_params
         p, v, h = self_info[0:3]
         init_state_4_kine = [p[0], p[1], v[0], v[1], h]
-        track_info_self = mass_point_model(u, init_state_4_kine, TRACK_LEN, dt)
+        # track_info_self = mass_point_model(u, init_state_4_kine, TRACK_LEN, dt)
+        track_info_self = bicycle_model(u, init_state_4_kine, TRACK_LEN, dt)
         new_track_self = track_info_self[:, 0:2]
         util = cal_linear_util(u, new_track_self, self_info[3], last_track_params, last_track_self, last_track_inter)
         return util
@@ -549,6 +578,7 @@ def cal_linear_util(u, new_track, self_ipv, last_track_params, last_track, last_
     # for k in range(np.size(vec_n, 0)):
     #     dis_new2last = new_track[k, :] - tao[k, :]
     #     c_dev_cv = c_dev_cv + abs(np.dot(vec_n[k, :], dis_new2last[:]))
+    # print('lane deviation:', c_dev_cv)
 
     c_dev_cv = abs(np.dot(vec_n[-1, :], new_track[-1, :] - tao[-1, :])) \
                + abs(np.dot(vec_n[-2, :], new_track[-2, :] - tao[-2, :]))
@@ -556,6 +586,7 @@ def cal_linear_util(u, new_track, self_ipv, last_track_params, last_track, last_
     '---- define reward of travel progress ----'
     travel_progress = np.dot(vec_t[-1], (new_track[-1] - last_track[-1])) / \
                       (1 + kappa[-1] * np.dot((tao[-1] - last_track[-1, :]), vec_n[-1, :]))
+    # print('travel process:', travel_progress)
 
     '---- interacting agent reward ----'
     r_other = 0
@@ -566,9 +597,11 @@ def cal_linear_util(u, new_track, self_ipv, last_track_params, last_track, last_
                       * np.dot((last_track[k, :] - last_track_inter[k, :]), (new_track[k, :] - last_track[k, :]))
 
     '---- jerk'
-    c_jerk = sum(abs(u[1:]-u[:-1]))
+    c_jerk = sum(abs(u[1:TRACK_LEN - 1] - u[0:TRACK_LEN - 2])) / 0.12 + sum(
+        abs(u[TRACK_LEN:] - u[TRACK_LEN - 1:-1])) / 0.12
+    #  + 0.05 * c_jerk
 
-    return math.cos(self_ipv) * (4 * c_dev_cv - travel_progress) - math.sin(self_ipv) * 3 * r_other
+    return math.cos(self_ipv) * (1.5 * c_dev_cv - travel_progress) - math.sin(self_ipv) * 3 * r_other
 
 
 def utility_fun(self_info, track_inter):
@@ -582,7 +615,7 @@ def utility_fun(self_info, track_inter):
         """
         p, v, h = self_info[0:3]
         init_state_4_kine = [p[0], p[1], v[0], v[1], h]
-        track_info_self = kinematic_model(u, init_state_4_kine, np.size(track_inter, 0), dt)
+        track_info_self = bicycle_model(u, init_state_4_kine, np.size(track_inter, 0), dt)
         track_self = track_info_self[:, 0:2]
         track_all = [track_self, track_inter[:, 0:2]]
         # print(np.sin(self_info[3]))
@@ -656,7 +689,7 @@ def cal_group_cost(track_packed):
     return cost_group * WEIGHT_GRP
 
 
-def cal_reliability(inter_track, act_track, vir_track_coll, target):
+def cal_traj_reliability(inter_track, act_track, vir_track_coll, target):
     """
     Calculate the reliability of a certain virtual agent by comparing observed and simulated tracks of the under
     estimating agent (or the cost preference thereof)
@@ -685,8 +718,7 @@ def cal_reliability(inter_track, act_track, vir_track_coll, target):
             var[i] = np.power(
                 np.prod(
                     (1 / sigma / np.sqrt(2 * math.pi))
-                    * np.exp(- rel_dis ** 2 / (2 * sigma ** 2))
-                )
+                    * np.exp(- rel_dis ** 2 / (2 * sigma ** 2)))
                 , 1 / np.size(act_track, 0))
 
             if var[i] < 0:
@@ -714,6 +746,11 @@ def cal_reliability(inter_track, act_track, vir_track_coll, target):
         weight = np.ones(candidates_num) / candidates_num
     # print(weight)
     return weight
+
+
+def cal_ipv_reliability(ipv, self_track, inter_track):
+    util = None
+    return util
 
 
 def get_index_on_cv(cv, point):
@@ -754,22 +791,27 @@ def game_thread(agent, agent_iter, iter_limit=10):
 
 if __name__ == '__main__':
     '---- set initial state of the left-turn vehicle ----'
-    init_position_lt = [11.7, -5]
-    init_velocity_lt = [1, 3]
+    init_position_lt = [11, -6]
+    init_velocity_lt = [0, 1]
     init_heading_lt = math.pi / 4
 
     '---- set initial state of the go-straight vehicle ----'
     init_position_gs = [19, -2]
-    init_velocity_gs = [-4, 0]
+    init_velocity_gs = [-1, 0]
     init_heading_gs = math.pi
 
-    agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt')
-    agent_gs = Agent(init_position_gs, init_velocity_gs, init_heading_gs, 'gs')
+    agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt', [0, 0])
+    agent_gs = Agent(init_position_gs, init_velocity_gs, init_heading_gs, 'gs', [0, 0])
     agent_lt.estimated_inter_agent = copy.deepcopy(agent_gs)
 
-    agent_lt.ipv = -1 * math.pi / 8
+    agent_lt.ipv = 1 * math.pi / 8
     agent_lt.estimated_inter_agent.ipv = 1 * math.pi / 8
 
+    time_all1 = time.perf_counter()
+    # with viztracer.VizTracer():
     agent_lt.linear_ibr_interact(iter_limit=5)
+    # agent_lt.ibr_interact(iter_limit=5)
+    time_all2 = time.perf_counter()
+    print('overall time:', time_all2 - time_all1)
 
     agent_lt.draw()

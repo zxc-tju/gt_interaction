@@ -51,7 +51,7 @@ def get_central_vertices(cv_type, origin_point=None):
     return cv_smoothed, s_accumulated
 
 
-def kinematic_model(u, init_state, TRACK_LEN, dt):
+def bicycle_model(u, init_state, TRACK_LEN, dt):
     if not np.size(u, 0) == TRACK_LEN - 1:
         u = np.array([u[0:TRACK_LEN - 1], u[TRACK_LEN - 1:]]).T
     r_len = 0.8
