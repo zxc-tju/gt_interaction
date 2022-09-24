@@ -30,7 +30,7 @@ WEIGHT_GRP = 0.22
 # WEIGHT_GRP = 0.4
 
 # parameters of action bounds
-MAX_STEERING_ANGLE = math.pi / 4
+MAX_STEERING_ANGLE = math.pi / 6
 MAX_ACCELERATION = 1.0
 MAX_JERK = 2.0
 
@@ -187,7 +187,7 @@ class Agent:
         self.solve_linearized_optimization(last_track_self, last_track_inter)
         # self.in_loop_draw(last_track_self, last_track_inter)
 
-    def lp_ibr_interact(self, iter_limit=10):
+    def lp_ibr_interact(self, iter_limit=10, interactive=True):
         """
         Interact with the estimated interacting agent. This agent's IPV is continuously updated.
         """
@@ -212,7 +212,7 @@ class Agent:
 
         # plan for interacting agent
         new_track_inter = self.estimated_inter_agent. \
-            solve_linear_programming(last_track_inter[:, 0:2], last_track_self[:, 0:2])
+            solve_linear_programming(last_track_inter[:, 0:2], last_track_self[:, 0:2], interactive)
         # self.estimated_inter_agent.in_loop_draw(last_track_inter, last_track_self, fig_id)
         # fig_id += 1
         last_track_inter = new_track_inter
@@ -223,14 +223,14 @@ class Agent:
             count_iter += 1
 
             # plan for subjective agent
-            new_track_self = self.solve_linear_programming(last_track_self, last_track_inter)
+            new_track_self = self.solve_linear_programming(last_track_self, last_track_inter, interactive)
             # self.in_loop_draw(last_track_self, last_track_inter, fig_id)
             # fig_id += 1
             last_track_self = new_track_self
 
             #  plan for interacting agent
             new_track_inter = self.estimated_inter_agent. \
-                solve_linear_programming(last_track_inter, last_track_self)
+                solve_linear_programming(last_track_inter, last_track_self, interactive)
             # self.estimated_inter_agent.in_loop_draw(last_track_inter, last_track_self, fig_id)
             # fig_id += 1
             last_track_inter = new_track_inter
@@ -238,7 +238,7 @@ class Agent:
         #  final plan for subjective agent
 
         # with viztracer.VizTracer():
-        self.solve_linear_programming(last_track_self, last_track_inter)
+        self.solve_linear_programming(last_track_self, last_track_inter, interactive)
         # self.in_loop_draw(last_track_self, last_track_inter)
 
     def opt_plan(self):
@@ -399,12 +399,17 @@ class Agent:
 
         return self.trj_solution[:, 0:2]
 
-    def get_opt_params(self, last_track_self, last_track_inter):
+    def get_opt_params(self, last_track_self, last_track_inter, interactive=True):
+
+        if interactive:
+            min_dis = MIN_DIS
+        else:
+            min_dis = 0
 
         # calculate model parameters
         dis_ps2pi = np.linalg.norm(last_track_self - last_track_inter, axis=1)
         miu = np.zeros_like(dis_ps2pi)
-        miu[np.where(dis_ps2pi - MIN_DIS < 0)] = 1
+        miu[np.where(dis_ps2pi - min_dis < 0)] = 1
 
         if self.target in {'gs_nds', 'lt_nds'}:
             cv, _ = get_central_vertices(self.target, last_track_self[0, :])
@@ -433,7 +438,7 @@ class Agent:
 
         return [miu, tao, vec_t, vec_n, kappa]
 
-    def solve_linear_programming(self, last_track_self, last_track_inter):
+    def solve_linear_programming(self, last_track_self, last_track_inter, interactive=True):
         """
 
         """
@@ -441,22 +446,23 @@ class Agent:
         p, v, h = self.position, self.velocity, self.heading
         init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
 
-        miu, tao, vec_t, vec_n, kappa = self.get_opt_params(last_track_self, last_track_inter)
+        miu, tao, vec_t, vec_n, kappa = self.get_opt_params(last_track_self, last_track_inter, interactive)
 
-        c = get_cost_param(miu, tao, vec_t, vec_n, kappa, last_track_self, last_track_inter)
+        c = get_cost_param(miu, tao, vec_t, vec_n, kappa, last_track_self, last_track_inter, self.ipv)
 
-        A_ub, b_ub = get_ub_param(vec_n, tao, last_track_self, last_track_inter, p, v)
+        A_ub, b_ub = get_ub_param(vec_n, tao, last_track_self, last_track_inter, p, v, self.ipv, interactive)
 
-        bounds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(2 * TRACK_LEN - 2)]
-        # res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
+        bounds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(2 * TRACK_LEN - 2)] + [(0, 2.5)]
+
         # opt = {'disp': True}
         res = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='interior-point')
-        print(res.x)
-        print(res.message)
+        # print(res.x)
+        # print(res.message)
+
         self.action = res.x
 
         self.trj_solution = mass_point_model(self.action, init_state_4_kine, TRACK_LEN, dt)  # get trajectory
-        # # self.in_loop_draw(last_track_self, last_track_inter)
+        # self.in_loop_draw(last_track_self, last_track_inter)
 
         return self.trj_solution[:, 0:2]
 
@@ -515,7 +521,7 @@ class Agent:
             #     for inter_ipv in candidates:
             #         weight = math.exp(cal_ipv_reliability(inter_ipv, actual_track_inter, actual_track_self))
 
-    def estimate_self_ipv_in_nds(self, self_actual_track, inter_track):
+    def estimate_self_ipv(self, self_actual_track, inter_track):
         self_virtual_track_collection = []
         # ipv_range = np.random.normal(self.ipv, math.pi/6, 6)
         ipv_range = virtual_agent_IPV_range
@@ -593,57 +599,78 @@ class Agent:
             plt.savefig('./figures/' + str(fig_id) + '.png', dpi=600)
 
 
-def get_cost_param(miu, tao, vec_t, vec_n, kappa, last_track, last_track_inter):
-    param = np.zeros([TRACK_LEN * 2 - 2, 1])
+def get_cost_param(miu, tao, vec_t, vec_n, kappa, last_track, last_track_inter, ipv):
+    param = np.zeros([TRACK_LEN * 2 - 1, 1])
     dynamic_mat = np.zeros([TRACK_LEN - 1, TRACK_LEN - 1])
     for c in range(TRACK_LEN - 1):
         for r in range(c, TRACK_LEN - 1):
             dynamic_mat[c, r] = (r - c + 1) * dt ** 2
 
-    # reward of travel progress
+    weight_deviation = 4 * math.cos(ipv)
+    weight_travel = 1 * math.cos(ipv)
+    weight_inter = 5 * math.sin(ipv)
+
+    "cost of lane deviation"
+    param[TRACK_LEN * 2 - 2] = 1 * weight_deviation  # weight of deviation cost
+
+    "reward of travel progress"
+
     param_travel = vec_t[-1] / (1 + kappa[-1] * np.dot((tao[-1] - last_track[-1, :]), vec_n[-1, :]))
-    param[0: TRACK_LEN - 1] -= np.reshape(param_travel[0] * dynamic_mat[:, TRACK_LEN - 2], [TRACK_LEN - 1, 1])
-    param[TRACK_LEN - 1: TRACK_LEN * 2 - 2] -= np.reshape(param_travel[1] * dynamic_mat[:, TRACK_LEN - 2],
+
+    param[0: TRACK_LEN - 1] -= weight_travel * \
+                               np.reshape(param_travel[0] * dynamic_mat[:, TRACK_LEN - 2], [TRACK_LEN - 1, 1])
+    param[TRACK_LEN - 1: TRACK_LEN * 2 - 2] -= weight_travel * \
+                                               np.reshape(param_travel[1] * dynamic_mat[:, TRACK_LEN - 2],
                                                           [TRACK_LEN - 1, 1])
 
-    # reward of interacting agent
-    # for k in range(TRACK_LEN - 1):
-    #     if miu[k + 1]:
-    #         p_temp = miu[k] / np.linalg.norm(last_track[k, :] - last_track_inter[k, :]) \
-    #                  * (last_track[k, :] - last_track_inter[k, :])
-    #         param[0: TRACK_LEN - 1] -= np.reshape(p_temp[0] * dynamic_mat[:, k], [TRACK_LEN - 1, 1])
-    #
-    #         param[TRACK_LEN - 1: TRACK_LEN * 2 - 2] -= np.reshape(p_temp[1] * dynamic_mat[:, k], [TRACK_LEN - 1, 1])
+    "reward of interacting agent"
+    for k in range(TRACK_LEN - 1):
+        if miu[k + 1]:
+            p_temp = miu[k] / np.linalg.norm(last_track[k, :] - last_track_inter[k, :]) \
+                     * (last_track[k, :] - last_track_inter[k, :])
+
+            param[0: TRACK_LEN - 1] -= weight_inter * \
+                                       np.reshape(p_temp[0] * dynamic_mat[:, k], [TRACK_LEN - 1, 1])
+
+            param[TRACK_LEN - 1: TRACK_LEN * 2 - 2] -= weight_inter * \
+                                                       np.reshape(p_temp[1] * dynamic_mat[:, k], [TRACK_LEN - 1, 1])
 
     return param
 
 
-def get_ub_param(vec_n, tao, last_track_self, last_track_inter, p, v):
+def get_ub_param(vec_n, tao, last_track_self, last_track_inter, p, v, ipv, interactive=True):
     range_x = range(0, TRACK_LEN - 1)
     range_y = range(TRACK_LEN - 1, TRACK_LEN * 2 - 2)
 
-    param_A_ub = np.zeros([TRACK_LEN * 3 - 3, TRACK_LEN * 2 - 2])
+    param_A_ub = np.zeros([TRACK_LEN * 3 - 3, TRACK_LEN * 2 - 1])
     param_b_ub = np.zeros([TRACK_LEN * 3 - 3, 1])
     dynamic_mat = np.zeros([TRACK_LEN - 1, TRACK_LEN - 1])
     for c in range(TRACK_LEN - 1):
         for r in range(c, TRACK_LEN - 1):
             dynamic_mat[c, r] = (r - c + 1) * dt ** 2
 
+    if interactive:
+        min_dis = MIN_DIS
+    else:
+        min_dis = 0
     for k in range(TRACK_LEN - 1):
         # collision avoidance
         p_temp = (last_track_self[k, :] - last_track_inter[k, :]) \
                  / np.linalg.norm(last_track_self[k, :] - last_track_inter[k, :])
         param_A_ub[k, range_x] -= p_temp[0] * dynamic_mat[:, k]
         param_A_ub[k, range_y] -= p_temp[1] * dynamic_mat[:, k]
-        param_b_ub[k] = -MIN_DIS - np.dot(p_temp, last_track_inter[k, :]) \
+        param_b_ub[k] = - min_dis - np.dot(p_temp, last_track_inter[k, :]) \
                         + np.dot(p_temp, np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
-    #
-        # lane deviation
-        # param_A_ub[TRACK_LEN - 1: TRACK_LEN * 3 - 3, TRACK_LEN * 2 - 2] = -1
 
-        max_dev = 0.1
+        # lane deviation is controlled by a single variable
+        aggre_factor = 1
+        if ipv < 0:
+            aggre_factor = math.cos(ipv)
+        param_A_ub[TRACK_LEN - 1: TRACK_LEN * 3 - 3, TRACK_LEN * 2 - 2] = -1 * aggre_factor
 
-        # # a_x
+        max_dev = 0.1  # free deviation
+
+        # a_x
         param_A_ub[TRACK_LEN - 1 + k, range_x] += vec_n[k, 0] * dynamic_mat[:, k]
         param_A_ub[TRACK_LEN * 2 - 2 + k, range_x] += -vec_n[k, 0] * dynamic_mat[:, k]
 
@@ -652,10 +679,11 @@ def get_ub_param(vec_n, tao, last_track_self, last_track_inter, p, v):
         param_A_ub[TRACK_LEN * 2 - 2 + k, range_y] += -vec_n[k, 1] * dynamic_mat[:, k]
 
         # limit
-        param_b_ub[TRACK_LEN - 1 + k] = np.dot(vec_n[k, :], tao[k, :]) + max_dev \
-                                        - np.dot(vec_n[k, :], np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
-        param_b_ub[TRACK_LEN * 2 - 2 + k] = - np.dot(vec_n[k, :], tao[k, :]) + max_dev \
-                                            + np.dot(vec_n[k, :], np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
+        param_b_ub[TRACK_LEN - 1 + k] = max_dev + np.dot(vec_n[k, :], tao[k, :]
+                                                         - np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
+
+        param_b_ub[TRACK_LEN * 2 - 2 + k] = max_dev - np.dot(vec_n[k, :], tao[k, :]
+                                                             - np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
 
     return param_A_ub, param_b_ub
 
@@ -703,6 +731,7 @@ def cal_linear_util(u, new_track, self_ipv, last_track_params, last_track, last_
 
     Parameters
     ----------
+    u: action vector
     new_track: self track generated by mass point model given action u
     self_ipv:
     last_track_params:
@@ -945,7 +974,7 @@ if __name__ == '__main__':
 
     '---- set initial state of the go-straight vehicle ----'
     init_position_gs = [19, -2]
-    init_velocity_gs = [-1, 0]
+    init_velocity_gs = [-1.5, 0]
     init_heading_gs = math.pi
 
     agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt', [0, 0])
@@ -953,13 +982,11 @@ if __name__ == '__main__':
     agent_lt.estimated_inter_agent = copy.deepcopy(agent_gs)
 
     agent_lt.ipv = 1 * math.pi / 8
-    agent_lt.estimated_inter_agent.ipv = 1 * math.pi / 8
+    agent_lt.estimated_inter_agent.ipv = -2 * math.pi / 8
 
     time_all1 = time.perf_counter()
     # with viztracer.VizTracer():
-    agent_lt.lp_ibr_interact(iter_limit=5)
-    # agent_lt.linearized_ibr_interact(iter_limit=5)
-    # agent_lt.ibr_interact(iter_limit=5)
+    agent_lt.lp_ibr_interact(iter_limit=5, interactive=True)
     time_all2 = time.perf_counter()
     print('overall time:', time_all2 - time_all1)
 
