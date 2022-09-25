@@ -13,8 +13,8 @@ import viztracer
 import time
 
 # simulation setting
-dt = 0.3
-TRACK_LEN = 15
+dt = 0.12
+TRACK_LEN = 35
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 3
 
@@ -986,7 +986,7 @@ if __name__ == '__main__':
 
     time_all1 = time.perf_counter()
     # with viztracer.VizTracer():
-    agent_lt.lp_ibr_interact(iter_limit=5, interactive=True)
+    agent_lt.lp_ibr_interact(iter_limit=5, interactive=False)
     time_all2 = time.perf_counter()
     print('overall time:', time_all2 - time_all1)
 
