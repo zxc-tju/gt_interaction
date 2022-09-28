@@ -2,18 +2,20 @@
 Interaction simulator
 """
 import copy
+import scipy.io
 import math
-from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Process, Manager
 import numpy as np
 import pandas as pd
 from agent import Agent
-from tools.utility import draw_rectangle, get_central_vertices, smooth_ployline
+from tools.utility import draw_rectangle, get_central_vertices
 from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
 from NDS_analysis import analyze_ipv_in_nds, cal_pet
 from viztracer import VizTracer
 import time
+
+sigma = 0.1
 
 
 class Scenario:
@@ -29,6 +31,7 @@ class Scenario:
 
 class Simulator:
     def __init__(self, case_id=None):
+        self.gs_id = None
         self.sim_type = None
         self.semantic_result = None
         self.output_directory = None
@@ -46,10 +49,14 @@ class Simulator:
 
     def initialize(self, scenario, case_tag):
         self.scenario = scenario
-        self.agent_lt = Agent(scenario.position['lt'], scenario.velocity['lt'], scenario.heading['lt'], 'lt',
-                              scenario.acceleration['lt'])
-        self.agent_gs = Agent(scenario.position['gs'], scenario.velocity['gs'], scenario.heading['gs'], 'gs',
-                              scenario.acceleration['gs'])
+        try:
+            self.agent_lt = Agent(scenario.position['lt'], scenario.velocity['lt'], scenario.heading['lt'], 'lt',
+                                  scenario.acceleration['lt'])
+            self.agent_gs = Agent(scenario.position['gs'], scenario.velocity['gs'], scenario.heading['gs'], 'gs',
+                                  scenario.acceleration['gs'])
+        except AttributeError:
+            self.agent_lt = Agent(scenario.position['lt'], scenario.velocity['lt'], scenario.heading['lt'], 'lt',)
+            self.agent_gs = Agent(scenario.position['gs'], scenario.velocity['gs'], scenario.heading['gs'], 'gs',)
         self.agent_lt.estimated_inter_agent = copy.deepcopy(self.agent_gs)
         self.agent_gs.estimated_inter_agent = copy.deepcopy(self.agent_lt)
         self.agent_lt.ipv = self.scenario.ipv['lt']
@@ -514,6 +521,52 @@ class Simulator:
                             [controller_type_lt, controller_type_gs],
                             [init_acceleration_lt, init_acceleration_gs])
 
+    def read_nds_scenario_multi(self, controller_type_lt, controller_type_gs, t=0):
+        mat = scipy.io.loadmat('./data/NDS_data_fixed.mat')
+        # full interaction information
+        inter_info = mat['interaction_info']
+        inter_num = mat['interact_agent_num']
+        case_info = inter_info[self.case_id]
+
+        # find co-present gs agents (not necessarily interacting)
+        gs_info_multi = case_info[1:inter_num[0, self.case_id] + 1]
+        gs_num = len(gs_info_multi)
+
+        lt_info = case_info[0]
+        gs_info = gs_info_multi[self.gs_id]
+        solid_frame = np.nonzero(gs_info[:, 0])[0]
+        solid_range = range(solid_frame[0], solid_frame[-1])
+        t += solid_frame[0]
+
+        init_position_lt = [lt_info[t, 0] - 13, lt_info[t, 1] - 7.8]
+        init_velocity_lt = [lt_info[t, 2], lt_info[t, 3]]
+        init_acceleration_lt = [(lt_info[t + 1, 2] - lt_info[t + 1, 3]) / 0.12,
+                                (lt_info[t + 1, 2] - lt_info[t + 1, 3]) / 0.12]
+        init_heading_lt = lt_info[t, 4]
+
+        init_position_gs = [gs_info[t, 0] - 13, gs_info[t, 1] - 7.8]
+        init_velocity_gs = [gs_info[t, 2], gs_info[t, 3]]
+        init_acceleration_gs = [(gs_info[t + 1, 2] - gs_info[t + 1, 3]) / 0.12,
+                                (gs_info[t + 1, 2] - gs_info[t + 1, 3]) / 0.12]
+        init_heading_gs = gs_info[t, 4]
+
+        self.lt_actual_trj = lt_info[solid_range, 0:2]
+        self.lt_actual_trj[:, 0] = self.lt_actual_trj[:, 0] - 13
+        self.lt_actual_trj[:, 1] = self.lt_actual_trj[:, 1] - 7.8
+
+        self.gs_actual_trj = gs_info[solid_range, 0:2]
+        self.gs_actual_trj[:, 0] = self.gs_actual_trj[:, 0] - 13
+        self.gs_actual_trj[:, 1] = self.gs_actual_trj[:, 1] - 7.8
+
+        self.case_len = len(solid_range)
+
+        return Scenario([init_position_lt, init_position_gs],
+                        [init_velocity_lt, init_velocity_gs],
+                        [init_heading_lt, init_heading_gs],
+                        [0, 0],
+                        [controller_type_lt, controller_type_gs],
+                        [init_acceleration_lt, init_acceleration_gs])
+
     def ipv_analysis(self):
         """
         estimate self ipv expression from a third-party view
@@ -772,6 +825,8 @@ class Simulator:
         min_self_strength_ipv_gs = []
         ave_semantic_res = []
         semantic_res_std = []
+        ipv_lt = []
+        ipv_gs = []
 
         for t in range(len(trajectory_collection)):
             trj_package = trajectory_collection[t]
@@ -785,16 +840,33 @@ class Simulator:
             self_plan_dev_gs = []
             inter_plan_dev_gs = []
             semantic_res = []
+            likeness = []
             for task_id in range(len(trj_package) - 1):
                 # lt track (observed in simulation and ground truth in nds)
                 self_plan_lt = trj_package['task' + str(task_id)]['lt-self']
                 inter_plan_lt = trj_package['task' + str(task_id)]['lt-inter']
-                nds_trj_lt = np.array(self.lt_actual_trj[:, 0:2])
+                nds_trj_lt = np.array(self.lt_actual_trj[t:, 0:2])
+
+                compare_range = range(min(8, np.size(nds_trj_lt, 0)))
+                rel_dis_lt = np.linalg.norm(self_plan_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1)
 
                 # gs track (observed in simulation and ground truth in nds)
                 self_plan_gs = trj_package['task' + str(task_id)]['gs-self']
                 inter_plan_gs = trj_package['task' + str(task_id)]['gs-inter']
-                nds_trj_gs = np.array(self.gs_actual_trj[:, 0:2])
+                nds_trj_gs = np.array(self.gs_actual_trj[t:, 0:2])
+
+                rel_dis_gs = np.linalg.norm(self_plan_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)
+
+                rel_dis = np.concatenate((rel_dis_lt, rel_dis_gs), axis=0)
+                likeness_temp = np.power(
+                    np.prod(
+                        (1 / sigma / np.sqrt(2 * math.pi))
+                        * np.exp(- rel_dis ** 2 / (2 * sigma ** 2)))
+                    , 1 / np.size(rel_dis, 0))
+                if likeness_temp < 0:
+                    likeness_temp = 0
+
+                likeness.append(likeness_temp)
 
                 "interaction strength indicated by plan deviation in each task"
                 self_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_lt - self_plan_lt, axis=1)))
@@ -804,7 +876,7 @@ class Simulator:
                 inter_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_lt - inter_plan_gs, axis=1)))
 
                 "closest time point"
-                dis_lt = np.linalg.norm(np.array(self_plan_lt)-np.array(inter_plan_lt), axis=1)
+                dis_lt = np.linalg.norm(np.array(self_plan_lt) - np.array(inter_plan_lt), axis=1)
                 min_dis_index_lt = np.where(min(dis_lt) == dis_lt)
                 dis_gs = np.linalg.norm(np.array(self_plan_gs) - np.array(inter_plan_gs), axis=1)
                 min_dis_index_gs = np.where(min(dis_gs) == dis_gs)
@@ -820,6 +892,17 @@ class Simulator:
                 else:
                     semantic_res.append(0)
 
+            "ipv estimation"
+            likeness = likeness/(sum(likeness))
+            ipv_lt_coll = [-0.5, -0.5, -0.5, -0.5, -0.5, 0, 0, 0, 0, 0, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1, 1, 1.5,
+                           1.5, 1.5, 1.5, 1.5]
+            # ipv_lt_coll = [-0.5, -0.5, -0.5, 0, 0, 0, 1, 1, 1]
+            ipv_lt.append(np.dot(likeness, ipv_lt_coll))
+            ipv_gs_coll = [-0.5, 0, 0.5, 1, 1.5, -0.5, 0, 0.5, 1, 1.5, -0.5, 0, 0.5, 1, 1.5, -0.5, 0, 0.5, 1, 1.5, -0.5,
+                           0, 0.5, 1, 1.5, ]
+            # ipv_gs_coll = [-0.5, 0, 1, -0.5, 0, 1, -0.5, 0, 1]
+            ipv_gs.append(np.dot(likeness, ipv_gs_coll))
+
             "save interaction strength for each agent"
             ave_plan_dev_lt.append(np.mean(self_plan_dev_lt))
             ave_plan_dev_gs.append(np.mean(self_plan_dev_gs))
@@ -827,38 +910,18 @@ class Simulator:
             "find the ipv that minimize the ## overall ## interaction strength"
             overall_plan_dev_lt = np.array(self_plan_dev_lt) + np.array(inter_plan_dev_lt)
             min_overall_strength_id_lt = np.where(min(overall_plan_dev_lt) == overall_plan_dev_lt)
-            if min_overall_strength_id_lt[0][0] in {0, 1, 2}:
-                min_overall_strength_ipv_lt.append(-1)
-            elif min_overall_strength_id_lt[0][0] in {3, 4, 5}:
-                min_overall_strength_ipv_lt.append(0)
-            else:
-                min_overall_strength_ipv_lt.append(1)
+            min_overall_strength_ipv_lt.append(ipv_lt_coll[min_overall_strength_id_lt[0][0]])
 
             overall_plan_dev_gs = np.array(self_plan_dev_gs) + np.array(inter_plan_dev_gs)
             min_overall_strength_id_gs = np.where(min(overall_plan_dev_gs) == overall_plan_dev_gs)
-            if min_overall_strength_id_gs[0][0] in {0, 3, 6}:
-                min_overall_strength_ipv_gs.append(-1)
-            elif min_overall_strength_id_gs[0][0] in {1, 4, 7}:
-                min_overall_strength_ipv_gs.append(0)
-            else:
-                min_overall_strength_ipv_gs.append(1)
+            min_overall_strength_ipv_gs.append(ipv_gs_coll[min_overall_strength_id_gs[0][0]])
 
             "find the ipv that minimize the ## self ## interaction strength"
             min_self_strength_id_lt = np.where(min(self_plan_dev_lt) == self_plan_dev_lt)
-            if min_self_strength_id_lt[0][0] in {0, 1, 2}:
-                min_self_strength_ipv_lt.append(-1)
-            elif min_self_strength_id_lt[0][0] in {3, 4, 5}:
-                min_self_strength_ipv_lt.append(0)
-            else:
-                min_self_strength_ipv_lt.append(1)
+            min_self_strength_ipv_lt.append(ipv_lt_coll[min_self_strength_id_lt[0][0]])
 
             min_self_strength_id_gs = np.where(min(self_plan_dev_gs) == self_plan_dev_gs)
-            if min_self_strength_id_gs[0][0] in {0, 3, 6}:
-                min_self_strength_ipv_gs.append(-1)
-            elif min_self_strength_id_gs[0][0] in {1, 4, 7}:
-                min_self_strength_ipv_gs.append(0)
-            else:
-                min_self_strength_ipv_gs.append(1)
+            min_self_strength_ipv_gs.append(ipv_gs_coll[min_self_strength_id_gs[0][0]])
 
             "find semantic results"
             ave_semantic_res.append(np.mean(semantic_res))
@@ -870,25 +933,30 @@ class Simulator:
                             min_overall_strength_ipv_lt[i], min_overall_strength_ipv_gs[i],
                             min_self_strength_ipv_lt[i], min_self_strength_ipv_gs[i],
                             ave_semantic_res[i], semantic_res_std[i],
+                            ipv_lt[i], ipv_gs[i],
                             ] for i in range(len(ave_plan_dev_lt))],
                           columns=['ave_plan_dev_lt', 'ave_plan_dev_gs',
                                    'min_overall_strength_ipv_lt', 'min_overall_strength_ipv_gs',
                                    'min_self_strength_ipv_lt', 'min_self_strength_ipv_gs',
                                    'ave_semantic_res', 'semantic_res_std',
+                                   'lt ipv', 'gs ipv',
                                    ])
 
         # write data
-        with pd.ExcelWriter(file_name, engine="xlsxwriter") as writer:
+        # book = load_workbook(file_name)
+        with pd.ExcelWriter(file_name, mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
+            # writer.book = book
             df.to_excel(writer, header=True, index=False,
-                        sheet_name=str(self.case_id),
+                        sheet_name=str(self.case_id) + '-' + str(self.gs_id),
                         startcol=0)
 
-            for column in df:
-                column_length = max(df[column].astype(str).map(len).max(), len(column))
-                col_idx = df.columns.get_loc(column)
-                writer.sheets[str(self.case_id)].set_column(col_idx, col_idx, 1.2 * column_length)
+            # for column in df:
+            #     column_length = max(df[column].astype(str).map(len).max(), len(column))
+            #     col_idx = df.columns.get_loc(column)
+            #     writer.sheets[str(self.case_id)].set_column(col_idx, col_idx, 1.2 * column_length)
 
-            writer.save()
+            # writer.save()
+            # writer.close()
 
 
 def get_semantic_result(track_lt, track_gs, case_type='simu'):
@@ -967,18 +1035,75 @@ def get_semantic_result(track_lt, track_gs, case_type='simu'):
     return semantic_result
 
 
-def run_interaction(simulator, case_id, task_id, returns):
-    simu_sub = copy.deepcopy(simulator)
-    simu_sub.tag += '-task' + str(task_id)
-    simu_sub.interact(simu_step=1)
-    simu_sub.visualize_single_step(file_path='figures/convergence anlysis-' + str(case_id) + '/')
+def run_interaction(case_id, task_id, t, lt_ipv, gs_ipv, returns):
+    simu = Simulator(case_id=case_id)
+    simu.sim_type = 'nds'
+    controller_type_lt = 'linear-gt'
+    controller_type_gs = 'linear-gt'
+    simu.read_nds_scenario(controller_type_lt, controller_type_gs)
 
-    print('simulation finished: task id - ' + str(task_id))
+    simu.simu_time = t
+    tag = 'conv analysis-case' + str(case_id) + '-t' + str(t) + '-task' + str(task_id)
+    simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs, t=t)
 
-    returns['task' + str(task_id)] = {'lt-self': simu_sub.agent_lt.trj_solution[:, 0:2],
-                                      'lt-inter': simu_sub.agent_lt.estimated_inter_agent.trj_solution[:, 0:2],
-                                      'gs-self': simu_sub.agent_gs.trj_solution[:, 0:2],
-                                      'gs-inter': simu_sub.agent_gs.estimated_inter_agent.trj_solution[:, 0:2]}
+    simu.initialize(simu_scenario, tag)
+
+    simu.agent_gs.target = 'gs_nds'
+    simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
+    simu.agent_lt.target = 'lt_nds'
+    simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
+
+    simu.agent_gs.ipv = gs_ipv * math.pi / 4
+    simu.agent_gs.estimated_inter_agent.ipv = lt_ipv * math.pi / 4
+    simu.agent_lt.ipv = lt_ipv * math.pi / 4
+    simu.agent_lt.estimated_inter_agent.ipv = gs_ipv * math.pi / 4
+
+    simu.interact(simu_step=1)
+    simu.visualize_single_step(file_path='./figures/convergence analysis-' + str(case_id) + '/')
+
+    # print('simulation finished: task id - ' + str(task_id))
+
+    returns['task' + str(task_id)] = {'lt-self': simu.agent_lt.trj_solution[:, 0:2],
+                                      'lt-inter': simu.agent_lt.estimated_inter_agent.trj_solution[:, 0:2],
+                                      'gs-self': simu.agent_gs.trj_solution[:, 0:2],
+                                      'gs-inter': simu.agent_gs.estimated_inter_agent.trj_solution[:, 0:2]}
+
+    return returns
+
+
+def run_interaction_multi(case_id, task_id, t, lt_ipv, gs_ipv, gs_id, returns):
+    simu = Simulator(case_id=case_id)
+    simu.sim_type = 'nds'
+    controller_type_lt = 'linear-gt'
+    controller_type_gs = 'linear-gt'
+    simu.read_nds_scenario(controller_type_lt, controller_type_gs)
+
+    simu.simu_time = t
+    simu.gs_id = gs_id
+    tag = 'conv analysis-case' + str(case_id) + '-t' + str(t) + '-task' + str(task_id)
+    simu_scenario = simu.read_nds_scenario_multi(controller_type_lt, controller_type_gs, t=t)
+
+    simu.initialize(simu_scenario, tag)
+
+    simu.agent_gs.target = 'gs_nds'
+    simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
+    simu.agent_lt.target = 'lt_nds'
+    simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
+
+    simu.agent_gs.ipv = gs_ipv * math.pi / 4
+    simu.agent_gs.estimated_inter_agent.ipv = lt_ipv * math.pi / 4
+    simu.agent_lt.ipv = lt_ipv * math.pi / 4
+    simu.agent_lt.estimated_inter_agent.ipv = gs_ipv * math.pi / 4
+
+    simu.interact(simu_step=1)
+    # simu.visualize_single_step(file_path='./figures/convergence analysis-' + str(case_id) + '/')
+
+    # print('simulation finished: task id - ' + str(task_id))
+
+    returns['task' + str(task_id)] = {'lt-self': simu.agent_lt.trj_solution[:, 0:2],
+                                      'lt-inter': simu.agent_lt.estimated_inter_agent.trj_solution[:, 0:2],
+                                      'gs-self': simu.agent_gs.trj_solution[:, 0:2],
+                                      'gs-inter': simu.agent_gs.estimated_inter_agent.trj_solution[:, 0:2]}
 
     return returns
 
@@ -1268,16 +1393,10 @@ def main_analyze_interaction_parallel():
                     manager = Manager()
                     traj_coll_temp = manager.dict()
                     task_id = 0
-                    for lt_ipv in {-1, 0, 1}:
-                        for gs_ipv in {-1, 0, 1}:
-                            simu_temp = copy.deepcopy(simu)
-
-                            simu_temp.agent_gs.ipv = gs_ipv * math.pi / 4
-                            simu_temp.agent_gs.estimated_inter_agent.ipv = lt_ipv * math.pi / 4
-                            simu_temp.agent_lt.ipv = lt_ipv * math.pi / 4
-                            simu_temp.agent_lt.estimated_inter_agent.ipv = gs_ipv * math.pi / 4
-
-                            task = Process(target=run_interaction, args=(simu_temp, case_id, task_id, traj_coll_temp))
+                    for lt_ipv in {-0.5, 0, 0.5, 1, 1.5}:
+                        for gs_ipv in {-0.5, 0, 0.5, 1, 1.5}:
+                            task = Process(target=run_interaction,
+                                           args=(case_id, task_id, t, lt_ipv, gs_ipv, traj_coll_temp))
                             task.start()
                             tasks.append(task)
                             task_id += 1
@@ -1288,12 +1407,93 @@ def main_analyze_interaction_parallel():
                     # generate selfish plan
                     simu.interact(simu_step=1, interactive=False)
                     simu.tag += '-self-opt'
-                    # simu.visualize_single_step(file_path='figures/convergence anlysis-' + str(case_id) + '/')
+                    # simu.visualize_single_step(file_path='./figures/convergence analysis-' + str(case_id) + '/')
                     traj_coll_temp['non-interactive'] = {'lt': simu.agent_lt.trj_solution[:, 0:2],
                                                          'gs': simu.agent_gs.trj_solution[:, 0:2]}
 
                 trajectory_collection.append(traj_coll_temp)
-            simu.save_conv_meta(trajectory_collection, file_name='outputs/conv_meta_data20220925.xlsx')
+            simu.save_conv_meta(trajectory_collection, file_name='outputs/conv_meta_data-case51.xlsx')
+
+
+def main_analyze_multi_interaction_parallel():
+    """
+      === main for analyzing interaction strength and convergence in nds ===
+          * set all agents as selfish and solve game for them
+      """
+
+    bg_type = 'linear-gt'
+    num_failed = 0
+
+    # for case_id in range(0, 51):
+    for case_id in {51}:
+
+        if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
+            num_failed += 1
+            continue
+        elif case_id in {12, 13, 24, 26, 28, 31, 32, 33, 37, 38, 46, 47, 48, 52, 56, 59, 65, 66, 69, 77, 82, 83, 84, 90,
+                         91, 92, 94, 96, 97, 98, 100}:  # no path-crossing event
+            num_failed += 1
+            continue
+        else:
+
+            print('start case:' + str(case_id))
+
+            simu = Simulator(case_id=case_id)
+            simu.sim_type = 'nds'
+            controller_type_lt = bg_type
+            controller_type_gs = bg_type
+
+            simu.gs_id = 2
+
+            simu.read_nds_scenario_multi(controller_type_lt, controller_type_gs)
+
+            trajectory_collection = []
+
+            for t in range(simu.case_len):
+            # for t in range(1):
+
+                print('time_step: ', t, '/', simu.case_len)
+
+                simu.simu_time = t
+                tag = 'conv-analysis-case' + str(case_id) + '-t' + str(t)
+                simu_scenario = simu.read_nds_scenario_multi(controller_type_lt, controller_type_gs, t=t)
+                traj_coll_temp = {}
+
+                if simu_scenario:
+                    simu.initialize(simu_scenario, tag)
+
+                    simu.agent_gs.target = 'gs_nds'
+                    simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
+                    simu.agent_lt.target = 'lt_nds'
+                    simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
+
+                    # worker pairs for generating trajectory under different ipv combinations
+                    tasks = []
+                    manager = Manager()
+                    traj_coll_temp = manager.dict()
+                    task_id = 0
+                    # for lt_ipv in {-0.5, 0, 0.5, 1, 1.5}:
+                    #     for gs_ipv in {-0.5, 0, 0.5, 1, 1.5}:
+                    for lt_ipv in {-0.5, 0, 1}:
+                        for gs_ipv in {-0.5, 0, 1}:
+                            task = Process(target=run_interaction_multi,
+                                           args=(case_id, task_id, t, lt_ipv, gs_ipv, simu.gs_id, traj_coll_temp))
+                            task.start()
+                            tasks.append(task)
+                            task_id += 1
+
+                    for task in tasks:
+                        task.join()
+
+                    # generate selfish plan
+                    simu.interact(simu_step=1, interactive=False)
+                    simu.tag += '-self-opt'
+                    # simu.visualize_single_step(file_path='./figures/convergence analysis-' + str(case_id) + '/')
+                    traj_coll_temp['non-interactive'] = {'lt': simu.agent_lt.trj_solution[:, 0:2],
+                                                         'gs': simu.agent_gs.trj_solution[:, 0:2]}
+
+                trajectory_collection.append(traj_coll_temp)
+            simu.save_conv_meta(trajectory_collection, file_name='outputs/conv_meta_data-case51.xlsx')
 
 
 if __name__ == '__main__':
@@ -1308,4 +1508,7 @@ if __name__ == '__main__':
 
     'solve game for scenario initialized by nds cases'
     # main_analyze_interaction()
-    main_analyze_interaction_parallel()
+
+    # main_analyze_interaction_parallel()
+
+    # main_analyze_multi_interaction_parallel()

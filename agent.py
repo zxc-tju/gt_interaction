@@ -607,7 +607,7 @@ def get_cost_param(miu, tao, vec_t, vec_n, kappa, last_track, last_track_inter, 
             dynamic_mat[c, r] = (r - c + 1) * dt ** 2
 
     weight_deviation = 4 * math.cos(ipv)
-    weight_travel = 1 * math.cos(ipv)
+    weight_travel = 0.7 * math.cos(ipv)
     weight_inter = 5 * math.sin(ipv)
 
     "cost of lane deviation"
@@ -653,20 +653,20 @@ def get_ub_param(vec_n, tao, last_track_self, last_track_inter, p, v, ipv, inter
         min_dis = MIN_DIS
     else:
         min_dis = 0
+
+    aggre_factor = max(math.cos(ipv), 0.5)
+
     for k in range(TRACK_LEN - 1):
         # collision avoidance
         p_temp = (last_track_self[k, :] - last_track_inter[k, :]) \
                  / np.linalg.norm(last_track_self[k, :] - last_track_inter[k, :])
         param_A_ub[k, range_x] -= p_temp[0] * dynamic_mat[:, k]
         param_A_ub[k, range_y] -= p_temp[1] * dynamic_mat[:, k]
-        param_b_ub[k] = - min_dis - np.dot(p_temp, last_track_inter[k, :]) \
+        param_b_ub[k] = - min_dis * (1 - k / (TRACK_LEN-1) * aggre_factor) - np.dot(p_temp, last_track_inter[k, :]) \
                         + np.dot(p_temp, np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
 
         # lane deviation is controlled by a single variable
-        aggre_factor = 1
-        if ipv < 0:
-            aggre_factor = math.cos(ipv)
-        param_A_ub[TRACK_LEN - 1: TRACK_LEN * 3 - 3, TRACK_LEN * 2 - 2] = -1 * aggre_factor
+        param_A_ub[TRACK_LEN - 1: TRACK_LEN * 3 - 3, TRACK_LEN * 2 - 2] = -1
 
         max_dev = 0.1  # free deviation
 

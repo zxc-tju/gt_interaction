@@ -43,7 +43,7 @@ def get_central_vertices(cv_type, origin_point=None):
     elif cv_type == 'gs':  # go straight
         cv_init = np.array([[100, -2], [10, -2], [0, -2], [-150, -2]])
     elif cv_type == 'lt_nds':  # left turn in NDS
-        cv_init = np.array([origin_point, [34.9-13, 16.6-7.8], [45.2-13, 18.8-7.8], [51.6-13, 20.3-7.8]])
+        cv_init = np.array([origin_point, [34.9-13, 16.6-7.8], [45.2-13, 18.8-7.8], [51.6-13, 20.3-7.8], [81.4, 25]])
     elif cv_type == 'gs_nds':  # go straight in NDS
         cv_init = np.array([origin_point, [8.5, 39.2], [9.9, 62.8], [11.3, 74.5]])
     assert cv_init is not None
