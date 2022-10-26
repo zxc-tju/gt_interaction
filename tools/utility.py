@@ -46,6 +46,13 @@ def get_central_vertices(cv_type, origin_point=None):
         cv_init = np.array([origin_point, [34.9-13, 16.6-7.8], [45.2-13, 18.8-7.8], [51.6-13, 20.3-7.8], [81.4, 25]])
     elif cv_type == 'gs_nds':  # go straight in NDS
         cv_init = np.array([origin_point, [8.5, 39.2], [9.9, 62.8], [11.3, 74.5]])
+    elif cv_type == 'ml':  # main line
+        cv_init = np.array([[-50, -2], [-30, -2], [-10, -2], [20, -2], [40, -2]])
+    elif cv_type == 'ir':  # in-ramp
+        cv_init = np.array([[-50, -10], [-39, -9.6], [-30, -8.5], [-20.4, -6.7],
+                            [-10.3, -3.9], [-4, -2.1], [-3, -2.1], [-2, -2.1], [-1, -2.1], [-0, -2.1],
+                            [7, -2], [8, -2], [9, -2], [10, -2], [11, -2], [12, -2],
+                            [13, -2], [14, -2], [15, -2], [16, -2], [17, -2], [18, -2], [30, -2], [40, -2]])
     assert cv_init is not None
     cv_smoothed, s_accumulated = smooth_ployline(cv_init)
     return cv_smoothed, s_accumulated

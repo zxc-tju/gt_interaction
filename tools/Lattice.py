@@ -21,7 +21,7 @@ MIN_A = -20
 MAX_LAT_A = 100 #参考apollo，横向约束应该是给到向心加速度，而不是角速度
 '''
 delta_t = 0.2  # fixed time between two consecutive trajectory points, sec
-v_tgt = 6.0  # fixed target speed, m/s
+v_tgt = 7.0  # fixed target speed, m/s
 sight_range = 10  # 判断有无障碍物的视野距离
 
 # cost权重
