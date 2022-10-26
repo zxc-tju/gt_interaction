@@ -1,8 +1,9 @@
 import scipy.io
+import math
 import numpy as np
 from matplotlib import pyplot as plt
 from agent import Agent
-from tools.utility import get_central_vertices, smooth_ployline, get_intersection_point
+from tools.utility import get_central_vertices, smooth_ployline, get_intersection_point, draw_rectangle
 import pandas as pd
 from datetime import datetime
 import xlsxwriter
@@ -162,6 +163,7 @@ def cal_pet(trj_a, trj_b, type_cal):
     "find the conflict point"
     conflict_point_str = get_intersection_point(trj_a, trj_b)
     conflict_point = np.array(conflict_point_str)
+
     if conflict_point_str.is_empty:  # there is no intersection between given polylines
         min_dis = 99
         min_dis2cv_index_a = None
@@ -176,6 +178,8 @@ def cal_pet(trj_a, trj_b, type_cal):
                 min_dis2cv_index_a = min_dis2cv_index_temp[0]
                 min_dis2cv_index_b = i
         conflict_point = (trj_a[min_dis2cv_index_a[0], :] + trj_b[min_dis2cv_index_b, :]) / 2
+    if not np.size(conflict_point) == 2:
+        conflict_point = conflict_point[0, :]
 
     "find the point that most closed to cp in each trajectory"
     smoothed_trj_a, smoothed_progress_a = smooth_ployline(trj_a, point_num=100)
@@ -221,7 +225,7 @@ def cal_pet(trj_a, trj_b, type_cal):
         return apet, ttcp_a, ttcp_b
 
 
-def analyze_nds(case_id):
+def estimate_ipv_in_nds(case_id):
     """
     estimate IPV in natural driving data and write results into excels
     :param case_id:
@@ -333,11 +337,11 @@ def analyze_nds(case_id):
             gs_track = gs_track - np.repeat([[13, 7.8]], np.size(gs_track, 0), axis=0)
 
             # estimate ipv
-            agent_lt.estimate_self_ipv_in_NDS(lt_track, gs_track)
+            agent_lt.estimate_self_ipv(lt_track, gs_track)
             ipv_collection[t, 0] = agent_lt.ipv
             ipv_error_collection[t, 0] = agent_lt.ipv_error
 
-            agent_gs.estimate_self_ipv_in_NDS(gs_track, lt_track)
+            agent_gs.estimate_self_ipv(gs_track, lt_track)
             ipv_collection[t, 1] = agent_gs.ipv
             ipv_error_collection[t, 1] = agent_gs.ipv_error
 
@@ -447,18 +451,21 @@ def visualize_nds(case_id):
         ax1.cla()
         ax1.set(xlim=[-22, 53], ylim=[-31, 57])
         img = plt.imread('background_pic/Jianhexianxia-v2.png')
-        ax1.imshow(img, extent=[-22, 53, -31, 57])
+        ax1.imshow(img, extent=[-28, 58, -42, 64])
         plt.text(-10, 60, 'T=' + str(t), fontsize=30)
 
         # position of go-straight vehicles
         for gs_id in range(np.size(gs_info_multi, 0)):
             if np.size(gs_info_multi[gs_id], 0) > t and not gs_info_multi[gs_id][t, 0] == 0:
                 # position
-                ax1.scatter(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
-                            s=120,
-                            alpha=0.9,
-                            color='red',
-                            label='go-straight')
+                draw_rectangle(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
+                               gs_info_multi[gs_id][t, 4] / math.pi * 180, ax1,
+                               para_alpha=1, para_color='#7030A0')
+                # ax1.scatter(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
+                #             s=120,
+                #             alpha=0.9,
+                #             color='red',
+                #             label='go-straight')
                 # future track
                 t_end_gs = min(t + 10, np.size(gs_info_multi[gs_id], 0))
                 ax1.plot(gs_info_multi[gs_id][t:t_end_gs, 0], gs_info_multi[gs_id][t:t_end_gs, 1],
@@ -466,17 +473,21 @@ def visualize_nds(case_id):
                          color='red')
 
         # position of left-turn vehicle
-        ax1.scatter(lt_info[t, 0], lt_info[t, 1],
-                    s=120,
-                    alpha=0.9,
-                    color='blue',
-                    label='left-turn')
+        draw_rectangle(lt_info[t, 0],  lt_info[t, 1],
+                       lt_info[t, 4] / math.pi * 180, ax1,
+                       para_alpha=1, para_color='#0E76CF')
+        # ax1.scatter(lt_info[t, 0], lt_info[t, 1],
+        #             s=120,
+        #             alpha=0.9,
+        #             color='blue',
+        #             label='left-turn')
         # future track
         ax1.plot(lt_info[t:t_end, 0], lt_info[t:t_end, 1],
                  alpha=0.8,
                  color='blue')
         # ax1.legend()
         plt.pause(0.1)
+        plt.savefig('figures/case89/' + 'case-' + str(case_id) + '-' + str(t) + '.png', dpi=300)
 
     # # show full track of all agents
     # ax2.plot(lt_info[:, 0], lt_info[:, 1],
@@ -501,4 +512,5 @@ if __name__ == '__main__':
     #     analyze_nds(case_index)
     # analyze_nds(30)
 
-    visualize_nds(1)
+    # visualize_nds(89)
+    estimate_ipv_in_nds(89)

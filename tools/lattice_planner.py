@@ -23,7 +23,7 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
     ry = path_data[:, 1]
     cts_points = np.array([rx, ry])
     path_points = CalcRefLine(cts_points)
-    obstacles = [Obstacle([obs_data['px'], obs_data['py'], 0, 10, 1.5, obs_data['heading']])]
+    obstacles = [Obstacle([obs_data['px'], obs_data['py'], 0, 4, 1.5, obs_data['heading']])]
     # obstacles = [Obstacle([obs_data['px'], obs_data['py'], obs_data['v'], 3, 1.5, M_PI])]
     # obstacles = [Obstacle([9.4, 15.5, 0, 3, 1.5, M_PI / 6])]
 
@@ -36,7 +36,7 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
         obstacle.MatchPath(path_points)
 
     theta_thr = M_PI / 6  # delta theta threhold, deviation from matched path
-    ttcs = [3, 4, 5]  # static ascending time-to-collision, sec
+    ttcs = [2, 3, 4, 5, 6, 7]  # static ascending time-to-collision, sec
 
     samp_basis = SampleBasis(traj_point, theta_thr, ttcs)
     local_planner = LocalPlanner(traj_point, path_points, obstacles, samp_basis)
@@ -73,18 +73,20 @@ def lattice_planning(path_data, obs_data, init_state, show_res=False):
         plt.show()
         plt.pause(0.3)
 
-    return [[x[0], x[1], x[2]*np.cos(x[4]), x[2]*np.sin(x[4]), x[4]] for x in traj_points]
+    return [[x[0], x[1], x[2]*np.cos(x[4]), x[2]*np.sin(x[4]), x[4]] for x in traj_points], local_planner.status
 
 
 if __name__ == '__main__':
 
     path_point = np.loadtxt("../data/roadMap_lzjSouth1.txt")
     path_point = path_point[:, 1:3]
-    obstacle_data = {'px': -260,
-                     'py': -500,
-                     'v': 0}
+    obstacle_data = {'px': path_point[150, 0],
+                     'py': path_point[150, 1],
+                     'v': 0,
+                     'heading': math.pi/2}
     initial_state = {'px': -251,
                      'py': -503,
-                     'v': 5}
+                     'v': 5,
+                     'heading': 0}
     res = lattice_planning(path_point, obstacle_data, initial_state, show_res=True)
 

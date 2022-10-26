@@ -20,9 +20,9 @@ MAX_A = 10
 MIN_A = -20
 MAX_LAT_A = 100 #参考apollo，横向约束应该是给到向心加速度，而不是角速度
 '''
-delta_t = 0.12  # fixed time between two consecutive trajectory points, sec
-v_tgt = 6.0  # fixed target speed, m/s
-sight_range = 20  # 判断有无障碍物的视野距离
+delta_t = 0.2  # fixed time between two consecutive trajectory points, sec
+v_tgt = 7.0  # fixed target speed, m/s
+sight_range = 10  # 判断有无障碍物的视野距离
 
 # cost权重
 SPEED_COST_WEIGHT = 1  # 速度和目标速度差距，暂时不用
@@ -573,7 +573,6 @@ class PolyTraj:
             s_cond = np.zeros(3)
             d_cond = np.zeros(3)
 
-            t = t + delta_t
             s_cond[0] = a0_s + a1_s * t + a2_s * t ** 2 + a3_s * t ** 3 + a4_s * t ** 4 + a5_s * t ** 5
             s_cond[1] = a1_s + 2 * a2_s * t + 3 * a3_s * t ** 2 + 4 * a4_s * t ** 3 + 5 * a5_s * t ** 4
             s_cond[2] = 2 * a2_s + 6 * a3_s * t + 12 * a4_s * t ** 2 + 20 * a5_s * t ** 3
@@ -600,6 +599,9 @@ class PolyTraj:
             traj_point = FrenetToCartesian(path_point_inter, s_cond, d_cond)
             # traj_point.v = v_tgt
             tp_all.append(traj_point)
+
+            t = t + delta_t
+
         self.tp_all = tp_all
         return tp_all
 
@@ -853,7 +855,7 @@ if __name__ == '__main__':
     # from listener: path_data, tp_list, obstacles
     # sampling: input theta_thr, ttcs; ouput theta_samp, dist_samp, d_end_samp
     # to talker: traj_points (list) or False
-    path_data = np.loadtxt("roadMap_lzjSouth1.txt")
+    path_data = np.loadtxt("../data/roadMap_lzjSouth1.txt")
     rx = path_data[:, 1]
     ry = path_data[:, 2]
     theta_thr = M_PI / 6  # delta theta threhold, deviation from matched path
@@ -861,13 +863,13 @@ if __name__ == '__main__':
     # dist_samp = [v_tgt * ttc for ttc in ttcs]   # sampling distances, m
     # dist_prvw = dist_samp[0]                    # preview distance, equal to minimal sampling distance
     # d_end_samp = [0]                            # sampling d_cond_end[0], probably useless
-    obstacles = [Obstacle([rx[150], ry[150], 0, 0.5, 0.5, M_PI / 6]),
-                 Obstacle([rx[300] + 1, ry[300], 0, 1, 1, M_PI / 2]),
-                 Obstacle([rx[500] + 1, ry[500], 0, 1, 1, M_PI / 3])]
+    obstacles = [Obstacle([rx[150], ry[150] + 2, 0, 0.5, 0.5, M_PI / 6]),
+                 Obstacle([rx[300], ry[300] - 1, 0, 1, 1, M_PI / 2]),
+                 Obstacle([rx[500], ry[500], 0, 1, 1, M_PI / 3])]
     cts_points = np.array([rx, ry])
     path_points = CalcRefLine(cts_points)
     # theta_init = math.atan2((ry[1]-ry[0]), (rx[1]-rx[0]))
-    tp_list = [rx[0], ry[0], 0, 0, 3., 0]  # from sensor actually, an example here
+    tp_list = [rx[0], ry[0]-1, 0, 0, 1, 0]  # from sensor actually, an example here
     traj_point = TrajPoint(tp_list)
     traj_point.MatchPath(path_points)  # matching once is enough
     for obstacle in obstacles:
@@ -920,7 +922,7 @@ if __name__ == '__main__':
                                               obstacle.width, color='r', angle=obstacle.heading * 180 / M_PI))
             plt.axis('scaled')
         plt.show()
-        plt.pause(0.0002)
+        plt.pause(0.1)
         plt.clf()
         """plt.close()
         print(traj_point.v)
