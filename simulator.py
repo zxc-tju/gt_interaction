@@ -90,27 +90,13 @@ class Simulator:
         for t in range(self.num_step):
 
             # print('time_step: ', t, '/', self.num_step)
-            # if t == 28:
-            #     print('debug!')
 
             "==plan for left-turn=="
-            if self.agent_lt.conl_type in {'gt'}:
-
-                # ==interaction with parallel virtual agents
-                self.agent_lt.ibr_interact_with_virtual_agents(self.agent_gs)
-                # self.agent_lt.ibr_interact_with_virtual_agents_parallel(self.agent_gs)
-
-                # ==interaction with estimated agent
-                self.agent_lt.ibr_interact(iter_limit=iter_limit)
-
-            elif self.agent_lt.conl_type in {'linear-gt'}:
+            if self.agent_lt.conl_type in {'linear-gt'}:
                 # time1 = time.perf_counter()
                 self.agent_lt.lp_ibr_interact(iter_limit=iter_limit, interactive=interactive)
                 # time2 = time.perf_counter()
                 # print('time consumption: ', time2 - time1)
-
-            elif self.agent_lt.conl_type in {'opt'}:
-                self.agent_lt.opt_plan()
 
             elif self.agent_lt.conl_type in {'idm'}:
                 self.agent_lt.idm_plan(self.agent_gs)
@@ -150,20 +136,8 @@ class Simulator:
                     self.agent_lt.plan_count = self.agent_lt.plan_count - 1
 
             "==plan for go straight=="
-            if self.agent_gs.conl_type in {'gt'}:
-                # ==interaction with parallel virtual agents
-                self.agent_gs.ibr_interact_with_virtual_agents(self.agent_lt, iter_limit)
-                # self.agent_gs.ibr_interact_with_virtual_agents_parallel(self.agent_lt, iter_limit)
-
-                # ==interaction with estimated agent
-                self.agent_gs.ibr_interact(iter_limit)
-
-            elif self.agent_gs.conl_type in {'linear-gt'}:
+            if self.agent_gs.conl_type in {'linear-gt'}:
                 self.agent_gs.lp_ibr_interact(iter_limit=iter_limit, interactive=interactive)
-                # print(self.agent_gs.trj_solution)
-
-            elif self.agent_gs.conl_type in {'opt'}:
-                self.agent_gs.opt_plan()
 
             elif self.agent_gs.conl_type in {'idm'}:
                 self.agent_gs.idm_plan(self.agent_lt)
@@ -1172,7 +1146,8 @@ def run_interaction(case_id, task_id, t, lt_ipv, gs_ipv, returns):
     simu.agent_lt.estimated_inter_agent.ipv = gs_ipv * math.pi / 4
 
     simu.interact(simu_step=1)
-    simu.visualize_single_step(file_path='./figures/convergence analysis-' + str(case_id) + '/')
+    simu.visualize_single_step(file_path='../outputs/5_gt_interaction/figures/convergence analysis-'
+                                         + str(case_id) + '/')
 
     # print('simulation finished: task id - ' + str(task_id))
 
@@ -1209,7 +1184,8 @@ def run_interaction_multi(case_id, task_id, t, lt_ipv, gs_ipv, gs_id, returns):
     simu.agent_lt.estimated_inter_agent.ipv = gs_ipv * math.pi / 4
 
     simu.interact(simu_step=1)
-    # simu.visualize_single_step(file_path='./figures/convergence analysis-' + str(case_id) + '/')
+    # simu.visualize_single_step(file_path='../outputs/5_gt_interaction/figures/convergence analysis-'
+    #                                      + str(case_id) + '/')
 
     # print('simulation finished: task id - ' + str(task_id))
 
@@ -1274,7 +1250,8 @@ def main_simulate_t_intersection():
     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory, simu.agent_gs.observed_trajectory,
                                                simu.sim_type)  # find semantic result (yield or rush)
 
-    simu.visualize_final_results(file_path='figures/')  # print final trajectory at given path
+    # print final trajectory at given path
+    simu.visualize_final_results(file_path='../outputs/5_gt_interaction/figures/')
 
     # simu.save_test_meta(param_v=param_v, ipv=bg_ipv, file_name='outputs/test_meta_data.xlsx',
     #                     sheet_name='left-turn test' + role_under_test)
@@ -1345,7 +1322,7 @@ def main_simulate_ramp_merge():
             simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory,
                                                        simu.agent_gs.observed_trajectory, simu.sim_type)
 
-            simu.visualize_final_results(file_path='figures/')  # print final trajectory at given path
+            simu.visualize_final_results(file_path='../outputs/5_gt_interaction/figures/')  # print final trajectory at given path
 
             # simu.save_test_meta(param_v=param_v, ipv=bg_ipv,
             #                     file_name='outputs/test_meta_data-' + role_under_test + '.xlsx',
@@ -1410,7 +1387,8 @@ def main_simulate_nds():
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                                                                simu.agent_gs.observed_trajectory[:, 0:2],
                                                                case_type='nds')
-                    simu.visualize_final_results(file_path='figures/')  # print final trajectory at given path
+                    # print final trajectory at given path
+                    simu.visualize_final_results(file_path='../outputs/5_gt_interaction/figures/')
                     # simu.save_event_meta(num_failed,
                     #                      file_name='outputs/simulation_meta_data.xlsx',
                     #                      sheet_name=model_type + ' simulation')
@@ -1494,7 +1472,8 @@ def main_analyze_interaction():
                                                          'gs': simu.agent_gs.trj_solution[:, 0:2]}
 
                 trajectory_collection.append(traj_coll_temp)
-            simu.save_conv_meta(trajectory_collection, file_name='outputs/conv_meta_data-case51.xlsx')
+            simu.save_conv_meta(trajectory_collection,
+                                file_name='../outputs/5_gt_interaction/outputs/conv_meta_data-case51.xlsx')
 
 
 def main_analyze_multi_interaction():
@@ -1579,17 +1558,15 @@ def main_analyze_multi_interaction():
 
 if __name__ == '__main__':
     'simulate unprotected left-turn at a T-intersection'
-    # main_simulate_t_intersection()
+    main_simulate_t_intersection()
 
     'simulate ramp merging'
     # main_simulate_ramp_merge()
 
     'simulate with nds data from Jianhe-Xianxia intersection'
-    main_simulate_nds()
+    # main_simulate_nds()
 
     'solve game for scenario initialized by nds cases'
     # main_analyze_interaction()
 
-    # main_analyze_interaction_parallel()
-
-    # main_analyze_multi_interaction_parallel()
+    # main_analyze_multi_interaction()
