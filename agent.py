@@ -194,7 +194,7 @@ class Agent:
                                   interactive)
 
         # lane_deviation_tolerance = 0.3  # for ramp
-        lane_deviation_tolerance = 2  # for left-turn
+        lane_deviation_tolerance = 2.5  # for left-turn
 
         bounds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(2 * TRACK_LEN - 2)] + \
                  [(0, lane_deviation_tolerance)]
@@ -333,32 +333,33 @@ class Agent:
             estimated_inter_agent.velocity = inter_agent[i].trj_solution[1, 2:4]
             estimated_inter_agent.heading = inter_agent[i].trj_solution[1, -1]
 
-        if self.conl_type in {'gt'}:
-            # update IPV
-            current_time = np.size(self.observed_trajectory, 0) - 2
-            if current_time > 1:
-                start_time = max(0, current_time - 6)
-                time_duration = current_time - start_time
-
-                actual_track_self = self.observed_trajectory[start_time:current_time, 0:2]
-                actual_track_inter = inter_agent.observed_trajectory[start_time:current_time, 0:2]
-
-            "====parallel game method===="
-            candidates = self.estimated_inter_agent.virtual_track_collection[start_time]
-            virtual_track_collection = []
-            for i in range(len(candidates)):
-                virtual_track_collection.append(candidates[i][0:time_duration, 0:2])
-
-            ipv_weight = cal_traj_reliability([], actual_track_inter, virtual_track_collection, [])
-
-            # weighted sum of all candidates' IPVs
-            self.estimated_inter_agent.ipv = sum(virtual_agent_IPV_range * ipv_weight)
-
-            # save updated ipv and estimation error
-            self.estimated_inter_agent.ipv_collection.append(self.estimated_inter_agent.ipv)
-            error = 1 - np.sqrt(sum(ipv_weight ** 2))
-            self.estimated_inter_agent.ipv_error_collection.append(error)
-            "====end of parallel game method===="
+        # TODO ipv estimation is currently unavailable, as we delete the time-consuming parallel virtual interactions
+        # if self.conl_type in {'gt'} and len(inter_agent) == 1:  # only suitable 1-1 interaction
+        #     # update IPV
+        #     current_time = np.size(self.observed_trajectory, 0)
+        #     if current_time > 3:
+        #         start_time = max(0, current_time - 6)
+        #         time_duration = current_time - start_time
+        #
+        #         actual_track_self = self.observed_trajectory[start_time:current_time, 0:2]
+        #         actual_track_inter = inter_agent.observed_trajectory[start_time:current_time, 0:2]
+        #
+        #         "====parallel game method===="
+        #         candidates = self.estimated_inter_agent[0].virtual_track_collection[start_time]
+        #         virtual_track_collection = []
+        #         for i in range(len(candidates)):
+        #             virtual_track_collection.append(candidates[i][0:time_duration, 0:2])
+        #
+        #         ipv_weight = cal_traj_reliability([], actual_track_inter, virtual_track_collection, [])
+        #
+        #         # weighted sum of all candidates' IPVs
+        #         self.estimated_inter_agent[0].ipv = sum(virtual_agent_IPV_range * ipv_weight)
+        #
+        #         # save updated ipv and estimation error
+        #         self.estimated_inter_agent[0].ipv_collection.append(self.estimated_inter_agent[0].ipv)
+        #         error = 1 - np.sqrt(sum(ipv_weight ** 2))
+        #         self.estimated_inter_agent[0].ipv_error_collection.append(error)
+        #         "====end of parallel game method===="
 
     def draw(self):
         plt.figure()
@@ -418,6 +419,55 @@ class Agent:
         plt.show()
         if fig_id:
             plt.savefig('./figures/' + str(fig_id) + '.png', dpi=600)
+
+    def ibr_interact(self, iter_limit=10):
+        """
+        Interact with the estimated interacting agent.
+        """
+        count_iter = 0  # count number of iteration
+        last_self_track = np.zeros_like(self.trj_solution)  # initialize a track reservation
+        while np.linalg.norm(self.trj_solution[:, 0:2] - last_self_track[:, 0:2]) > 1e-3:
+            count_iter += 1
+            last_self_track = self.trj_solution
+            self.solve_optimization(self.estimated_inter_agent[0].trj_solution)
+            self.estimated_inter_agent[0].solve_optimization(self.trj_solution)
+            if count_iter > iter_limit:  # limited to less than 10 iterations
+                break
+
+    def solve_optimization(self, inter_track):
+        """
+        Solve optimization to output best solution given interacting counterpart's track
+        """
+
+        track_len = np.size(inter_track, 0)
+        self_info = [self.position,
+                     self.velocity,
+                     self.heading,
+                     self.ipv,
+                     self.target]
+
+        p, v, h = self_info[0:3]
+        init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
+
+        u0 = np.concatenate([1 * np.zeros([(track_len - 1), 1]),
+                             np.zeros([(track_len - 1), 1])])  # initialize solution
+        bds_acc = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(track_len - 1)]
+        bds_str = [(-MAX_STEERING_ANGLE, MAX_STEERING_ANGLE) for _ in range(track_len - 1)]
+        bds = bds_acc + bds_str
+
+        fun = utility_fun(self_info, inter_track)  # objective function
+        # time1 = time.perf_counter()
+        res = minimize(fun, u0, bounds=bds, method='SLSQP')
+        # time2 = time.perf_counter()
+        # print(time2 - time1)
+
+        x = np.reshape(res.x, [2, track_len - 1]).T
+        self.action = x
+
+        # self.trj_solution = mass_point_model(x, init_state_4_kine, track_len, dt)  # get trajectory
+        self.trj_solution = bicycle_model(x, init_state_4_kine, track_len, dt)  # get trajectory
+
+        return self.trj_solution
 
 
 def get_cost_param(last_track_features, last_track, last_track_inter_collection, ipv):
@@ -667,6 +717,30 @@ def idm_model(para, vel_self, vel_rel, gap):
     return acc
 
 
+def utility_fun(self_info, track_inter):
+    def fun(u):
+        """
+        Calculate the utility from the perspective of "self" agent
+        :param u: num_step by 4 array, where the 1\2 columns are control of "self" agent
+                  and 3\4 columns control of "interacting" agent
+        :return: utility of the "self" agent under the control u
+        """
+        p, v, h = self_info[0:3]
+        init_state_4_kine = [p[0], p[1], v[0], v[1], h]
+        track_info_self = bicycle_model(u, init_state_4_kine, np.size(track_inter, 0), dt)
+        track_self = track_info_self[:, 0:2]
+        track_all = [track_self, track_inter[:, 0:2]]
+        # print(np.sin(self_info[3]))
+        interior_cost = cal_individual_cost(track_self, self_info[4])
+        group_cost = cal_group_cost(track_all)
+        util = np.cos(self_info[3]) * interior_cost + np.sin(self_info[3]) * group_cost
+        # print('interior_cost:', interior_cost)
+        # print('group_cost:', group_cost)
+        return util
+
+    return fun
+
+
 if __name__ == '__main__':
     '---- set initial state of the left-turn vehicle ----'
     init_position_lt = [11, -6]
@@ -687,7 +761,7 @@ if __name__ == '__main__':
     agent_gs1 = Agent(init_position_gs1, init_velocity_gs1, init_heading_gs1, 'gs', [0, 0])
     agent_gs2 = Agent(init_position_gs2, init_velocity_gs2, init_heading_gs2, 'gs', [0, 0])
     agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs1), copy.deepcopy(agent_gs2)]
-    # agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs2)]
+    # agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs1)]
 
     agent_lt.ipv = 2 * math.pi / 8
     agent_lt.estimated_inter_agent[0].ipv = 0 * math.pi / 8
@@ -699,4 +773,8 @@ if __name__ == '__main__':
     time_all2 = time.perf_counter()
     print('LP overall time:', time_all2 - time_all1)
 
+    # agent_lt.ibr_interact(iter_limit=10)
+    # time_all3 = time.perf_counter()
+    # print('non-linearized with cons overall time:', time_all3 - time_all2)
+    #
     agent_lt.draw()
