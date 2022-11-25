@@ -56,8 +56,8 @@ class Simulator:
 
         self.agent_lt = Agent(scenario.position[0], scenario.velocity[0], scenario.heading[0], scenario.target[0], )
         self.agent_gs = Agent(scenario.position[1], scenario.velocity[1], scenario.heading[1], scenario.target[1], )
-        self.agent_lt.estimated_inter_agent = copy.deepcopy(self.agent_gs)
-        self.agent_gs.estimated_inter_agent = copy.deepcopy(self.agent_lt)
+        self.agent_lt.estimated_inter_agent = [copy.deepcopy(self.agent_gs)]
+        self.agent_gs.estimated_inter_agent = [copy.deepcopy(self.agent_lt)]
         self.agent_lt.ipv = self.scenario.ipv[0]
         self.agent_gs.ipv = self.scenario.ipv[1]
         self.agent_lt.conl_type = self.scenario.conl_type[0]
@@ -177,8 +177,8 @@ class Simulator:
                     self.agent_gs.plan_count = self.agent_gs.plan_count - 1
 
             "==update state=="
-            self.agent_lt.update_state(self.agent_gs)
-            self.agent_gs.update_state(self.agent_lt)
+            self.agent_lt.update_state([self.agent_gs])
+            self.agent_gs.update_state([self.agent_lt])
 
             "==update video=="
             if make_video:
@@ -224,7 +224,7 @@ class Simulator:
                 ax.axis('scaled')
                 plt.show()
                 plt.pause(0.0001)
-                plt.savefig('figures/' + self.tag + '-' + str(t) + '.png', dpi=300)
+                plt.savefig('../outputs/5_gt_interaction/figures/' + self.tag + '-' + str(t) + '.png', dpi=300)
 
             if break_when_finish:
                 if self.agent_gs.observed_trajectory[-1, 0] < self.agent_lt.observed_trajectory[-1, 0] \
@@ -1209,14 +1209,14 @@ def main_simulate_t_intersection():
     """
     case_id = 0
     param_v = 1
-    role_under_test = 'gs'
-    bg_ipv = 2 * math.pi / 8  # ipv of background vehicle
+    role_under_test = None
+    bg_ipv = 1 * math.pi / 8  # ipv of background vehicle
     tag = 'test'  # tag for data saving
 
     '---- set initial state of the left-turn vehicle ----'
-    init_position_lt = [11.7, -5]
+    init_position_lt = [8.5, -8.5]
     init_velocity_lt = [1, 2] * param_v
-    init_heading_lt = math.pi / 4
+    init_heading_lt = math.pi / 3
     ipv_lt = bg_ipv
     controller_type_lt = 'linear-gt'
     if role_under_test == 'lt':
@@ -1243,7 +1243,7 @@ def main_simulate_t_intersection():
     simu.initialize(simu_scenario, tag)  # initialize the agents in the simulator
 
     time1 = time.perf_counter()
-    simu.interact(simu_step=15, iter_limit=5)
+    simu.interact(simu_step=35, iter_limit=5, make_video=True)
     time2 = time.perf_counter()
     print('time consumption: ', time2 - time1)
 
@@ -1371,17 +1371,21 @@ def main_simulate_nds():
             simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
             if simu_scenario:
                 simu.initialize(simu_scenario, tag)
+
                 simu.agent_gs.target = 'gs_nds'
-                simu.agent_gs.estimated_inter_agent.target = 'lt_nds'
+                for _, inter_agent in enumerate(simu.agent_gs.estimated_inter_agent):
+                    inter_agent.target = 'lt_nds'
+
                 simu.agent_lt.target = 'lt_nds'
-                simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
+                for _, inter_agent in enumerate(simu.agent_lt.estimated_inter_agent):
+                    inter_agent.target = 'gs_nds'
 
                 # simu.agent_gs.estimated_inter_agent.ipv = simu.agent_lt.ipv
                 # simu.agent_lt.estimated_inter_agent.ipv = simu.agent_gs.ipv
 
                 try:
                     time1 = time.perf_counter()
-                    simu.interact(simu_step=int(simu.case_len / 2), make_video=False, break_when_finish=False)
+                    simu.interact(simu_step=int(simu.case_len), make_video=True, break_when_finish=False)
                     time2 = time.perf_counter()
                     print('time consumption: ', time2 - time1)
                     simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
