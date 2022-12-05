@@ -13,10 +13,10 @@ import viztracer
 import time
 
 # simulation setting
-dt = 0.2
-TRACK_LEN = 20
+dt = 0.12
+TRACK_LEN = 30
 MAX_DELTA_UT = 1e-4
-MIN_DIS = 2.5
+MIN_DIS = 2
 
 # weights for calculate interior cost
 WEIGHT_DELAY = 0.3
@@ -31,7 +31,7 @@ WEIGHT_GRP = 0.22
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
-MAX_ACCELERATION = 1.5
+MAX_ACCELERATION = 1
 MAX_JERK = 2.0
 
 # initial guess on interacting agent's IPV
@@ -375,11 +375,14 @@ class Agent:
             plt.plot(self.trj_solution[t, 0], self.trj_solution[t, 1], 'r*')
 
             for i, inter_agent in enumerate(self.estimated_inter_agent):
+                c = 'blue'
+                if i > 0:
+                    c = 'black'
                 plt.plot(inter_agent.trj_solution[t, 0],
-                         inter_agent.trj_solution[t, 1], 'b*')
+                         inter_agent.trj_solution[t, 1], color=c, marker='*')
 
                 plt.plot([self.trj_solution[t, 0], inter_agent.trj_solution[t, 0]],
-                         [self.trj_solution[t, 1], inter_agent.trj_solution[t, 1]], alpha=0.2, color='black')
+                         [self.trj_solution[t, 1], inter_agent.trj_solution[t, 1]], alpha=0.2, color=c)
 
                 dis = np.linalg.norm(self.trj_solution[:, 0:2] - inter_agent.trj_solution[:, 0:2], axis=1)
                 index = np.where(dis == min(dis))
@@ -387,9 +390,9 @@ class Agent:
                             (self.trj_solution[index, 1] + inter_agent.trj_solution[index, 1]) / 2)
                 min_dis = min(min(dis), min_dis)
         plt.axis('equal')
-        plt.xlim(5, 20)
+        plt.xlim(5, 25)
         plt.ylim(-8, 5)
-        # plt.savefig('./figures/' + 'final.png', dpi=600)
+        plt.savefig('../outputs/5_gt_interaction/figures/' + 'final.png', dpi=600)
         plt.text(16, 4, 'min distance: %.2f' % min_dis)
 
         # plt.title('gs ipv: ' + str(self.estimated_inter_agent.ipv) + '--lt ipv: ' + str(self.ipv))
@@ -468,6 +471,30 @@ class Agent:
         self.trj_solution = bicycle_model(x, init_state_4_kine, track_len, dt)  # get trajectory
 
         return self.trj_solution
+
+    def ibr_interact_with_virtual_agents(self, agent_inter, iter_limit=10):
+        """
+        Generate copy of the interacting agent and interact with them
+        :param iter_limit: max iteration number
+        :param agent_inter: Agent:interacting agent
+        :return:
+        """
+        virtual_agent_track_collection = []
+        for ipv_temp in virtual_agent_IPV_range:
+            virtual_inter_agent = copy.deepcopy(agent_inter)
+            virtual_inter_agent.ipv = ipv_temp
+            agent_self_temp = copy.deepcopy(self)
+            count_iter = 0  # count number of iteration
+            last_self_track = np.zeros_like(self.trj_solution)  # initialize a track reservation
+            while np.linalg.norm(agent_self_temp.trj_solution[:, 0:2] - last_self_track[:, 0:2]) > 1e-3:
+                count_iter += 1
+                last_self_track = agent_self_temp.trj_solution
+                agent_self_temp.solve_optimization(virtual_inter_agent.trj_solution)
+                virtual_inter_agent.solve_optimization(agent_self_temp.trj_solution)
+                if count_iter > iter_limit:
+                    break
+            virtual_agent_track_collection.append(virtual_inter_agent.trj_solution)
+        self.estimated_inter_agent[0].virtual_track_collection.append(virtual_agent_track_collection)
 
 
 def get_cost_param(last_track_features, last_track, last_track_inter_collection, ipv):
