@@ -1121,13 +1121,13 @@ class Simulator:
                 plan_dis_lt = np.linalg.norm(plan_vec_lt, axis=1)
                 plan_vec_lt[np.where(plan_dis_lt > 4), :] = 0
                 sensi_r2p_lt = plan_vec_lt / np.linalg.norm(plan_dis_lt) * 0.5 * 0.12 ** 2
-                sensi_r2u_lt.append(np.mean(abs(dyna_mat * sensi_r2p_lt)))
+                sensi_r2u_lt.append(np.sum(abs(dyna_mat * sensi_r2p_lt)))
 
                 plan_vec_gs = self_plan_gs - inter_plan_gs
                 plan_dis_gs = np.linalg.norm(plan_vec_gs, axis=1)
                 plan_vec_gs[np.where(plan_dis_gs > 4), :] = 0
                 sensi_r2p_gs = plan_vec_gs / np.linalg.norm(plan_dis_gs) * 0.5 * 0.12 ** 2
-                sensi_r2u_gs.append(np.mean(abs(dyna_mat * sensi_r2p_gs)))
+                sensi_r2u_gs.append(np.sum(abs(dyna_mat * sensi_r2p_gs)))
 
                 "closest time point"
                 dis_lt = np.linalg.norm(np.array(self_plan_lt) - np.array(inter_plan_lt), axis=1)
@@ -1198,13 +1198,13 @@ class Simulator:
             ave_semantic_res.append(np.mean(semantic_res))
             semantic_res_std.append(np.std(semantic_res))
 
-            "interaction strength with sensitivity analysis"  # TODO
+            "interaction strength with sensitivity analysis"
             # actual
             plan_vec_act = nds_trj_lt - nds_trj_gs
             plan_dis_act = np.linalg.norm(plan_vec_act, axis=1)
             plan_vec_act[np.where(plan_dis_act > 4), :] = 0
             sensi_r2p_act = plan_vec_act / np.linalg.norm(plan_dis_act) * 0.5 * 0.12 ** 2
-            sensi_r2u_act.append(np.mean(abs(dyna_mat * sensi_r2p_act)))
+            sensi_r2u_act.append(np.sum(abs(dyna_mat * sensi_r2p_act)))
 
             # simulated average
             sensi_r2u_simu_ave_lt.append(np.mean(sensi_r2u_lt))
@@ -1693,7 +1693,7 @@ def main_analyze_interaction():
                 # if t == 9:
                 #     simu.visualize_multi_interaction(trajectory_collection, t)
             simu.save_conv_meta(trajectory_collection,
-                                file_name='../outputs/5_gt_interaction/outputs/conv_meta_data20221207-new.xlsx',
+                                file_name='../outputs/5_gt_interaction/outputs/conv_meta_data20221207-02.xlsx',
                                 draw=False)
 
 
