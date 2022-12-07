@@ -14,7 +14,7 @@ import time
 
 # simulation setting
 dt = 0.12
-TRACK_LEN = 30
+TRACK_LEN = 25
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 2
 
@@ -505,7 +505,7 @@ def get_cost_param(last_track_features, last_track, last_track_inter_collection,
 
     for c in range(TRACK_LEN - 1):
         for r in range(c, TRACK_LEN - 1):
-            dynamic_mat[c, r] = (r - c + 1) * dt ** 2
+            dynamic_mat[c, r] = (r - c + 1 - 0.5) * dt ** 2
 
     #  stable weight setting for 1-1 interaction [1, 0.7, 1]
     weight_deviation = 1 * math.cos(ipv)
@@ -554,7 +554,7 @@ def get_ub_param(last_track_features, last_track_self, last_track_inter_collecti
     dynamic_mat = np.zeros([TRACK_LEN - 1, TRACK_LEN - 1])
     for c in range(TRACK_LEN - 1):
         for r in range(c, TRACK_LEN - 1):
-            dynamic_mat[c, r] = (r - c + 1) * dt ** 2
+            dynamic_mat[c, r] = (r - c + 1 - 0.5) * dt ** 2
 
     if interactive:
         min_dis = MIN_DIS
@@ -786,13 +786,13 @@ if __name__ == '__main__':
 
     agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt', [0, 0])
     agent_gs1 = Agent(init_position_gs1, init_velocity_gs1, init_heading_gs1, 'gs', [0, 0])
-    agent_gs2 = Agent(init_position_gs2, init_velocity_gs2, init_heading_gs2, 'gs', [0, 0])
-    agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs1), copy.deepcopy(agent_gs2)]
-    # agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs1)]
+    # agent_gs2 = Agent(init_position_gs2, init_velocity_gs2, init_heading_gs2, 'gs', [0, 0])
+    # agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs1), copy.deepcopy(agent_gs2)]
+    agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs1)]
 
-    agent_lt.ipv = 2 * math.pi / 8
-    agent_lt.estimated_inter_agent[0].ipv = 0 * math.pi / 8
-    agent_lt.estimated_inter_agent[1].ipv = 0 * math.pi / 8
+    agent_lt.ipv = 1 * math.pi / 8
+    agent_lt.estimated_inter_agent[0].ipv = 1 * math.pi / 8
+    # agent_lt.estimated_inter_agent[1].ipv = 0 * math.pi / 8
 
     print('track len:', TRACK_LEN)
     time_all1 = time.perf_counter()

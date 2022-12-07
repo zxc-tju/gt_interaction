@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from NDS_analysis import analyze_ipv_in_nds, cal_pet
 from viztracer import VizTracer
 import time
+from tqdm import tqdm
 
 sigma = 0.1
 
@@ -1041,6 +1042,12 @@ class Simulator:
         ave_semantic_res = []
         semantic_res_std = []
 
+        sensi_r2u_act = []
+        sensi_r2u_simu_ave_lt = []
+        sensi_r2u_simu_ave_gs = []
+        sensi_r2u_simu_min_lt = []
+        sensi_r2u_simu_min_gs = []
+
         ipv_lt = []  # estimated ipv expression
         ipv_gs = []
 
@@ -1049,7 +1056,13 @@ class Simulator:
 
             nds_trj_lt = np.array(self.lt_actual_trj[t:, 0:2])
             nds_trj_gs = np.array(self.gs_actual_trj[t:, 0:2])
-            compare_range = range(min(8, np.size(nds_trj_lt, 0)))
+            compare_range = range(min(20, np.size(nds_trj_lt, 0)))
+            nds_trj_lt = nds_trj_lt[compare_range, :]
+            nds_trj_gs = nds_trj_gs[compare_range, :]
+
+            dyna_mat = [2 * i + 1 for i in compare_range]
+            dyna_mat = np.array([dyna_mat, dyna_mat])
+            dyna_mat = dyna_mat.T
 
             # optimal plan in non-interactive simulation
             self_opt_lt = trj_package['non-interactive']['lt'][compare_range, :]
@@ -1064,6 +1077,8 @@ class Simulator:
             inter_plan_dev_lt = []
             self_plan_dev_gs = []
             inter_plan_dev_gs = []
+            sensi_r2u_lt = []
+            sensi_r2u_gs = []
             semantic_res = []
             likeness = []
             for task_id in range(len(trj_package) - 1):
@@ -1080,8 +1095,8 @@ class Simulator:
                     plt.plot(self_plan_gs[:, 0], self_plan_gs[:, 1], color='purple')
                     # plt.plot(inter_plan_gs[:, 0], inter_plan_gs[:, 1], color='purple')
 
-                rel_dis_lt = np.linalg.norm(self_plan_lt - nds_trj_lt[compare_range, :], axis=1)
-                rel_dis_gs = np.linalg.norm(self_plan_gs - nds_trj_gs[compare_range, :], axis=1)
+                rel_dis_lt = np.linalg.norm(self_plan_lt - nds_trj_lt, axis=1)
+                rel_dis_gs = np.linalg.norm(self_plan_gs - nds_trj_gs, axis=1)
 
                 rel_dis = np.concatenate((rel_dis_lt, rel_dis_gs), axis=0)
                 likeness_temp = np.power(
@@ -1100,6 +1115,19 @@ class Simulator:
 
                 self_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_gs - self_plan_gs, axis=1)))
                 inter_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_lt - inter_plan_gs, axis=1)))
+
+                "interaction strength indicated by reward sensitivity to next action"
+                plan_vec_lt = self_plan_lt - inter_plan_lt
+                plan_dis_lt = np.linalg.norm(plan_vec_lt, axis=1)
+                plan_vec_lt[np.where(plan_dis_lt > 4), :] = 0
+                sensi_r2p_lt = plan_vec_lt / np.linalg.norm(plan_dis_lt) * 0.5 * 0.12 ** 2
+                sensi_r2u_lt.append(np.mean(abs(dyna_mat * sensi_r2p_lt)))
+
+                plan_vec_gs = self_plan_gs - inter_plan_gs
+                plan_dis_gs = np.linalg.norm(plan_vec_gs, axis=1)
+                plan_vec_gs[np.where(plan_dis_gs > 4), :] = 0
+                sensi_r2p_gs = plan_vec_gs / np.linalg.norm(plan_dis_gs) * 0.5 * 0.12 ** 2
+                sensi_r2u_gs.append(np.mean(abs(dyna_mat * sensi_r2p_gs)))
 
                 "closest time point"
                 dis_lt = np.linalg.norm(np.array(self_plan_lt) - np.array(inter_plan_lt), axis=1)
@@ -1130,7 +1158,7 @@ class Simulator:
             # ipv_gs_coll = [-0.5, 0, 1, -0.5, 0, 1, -0.5, 0, 1]
             ipv_gs.append(np.dot(likeness, ipv_gs_coll))
 
-            "actual interaction strength"
+            "actual interaction strength indicated by plan deviation"
             strength_lt.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1)))
             strength_gs.append(np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
             strength_overall.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1))
@@ -1170,6 +1198,22 @@ class Simulator:
             ave_semantic_res.append(np.mean(semantic_res))
             semantic_res_std.append(np.std(semantic_res))
 
+            "interaction strength with sensitivity analysis"  # TODO
+            # actual
+            plan_vec_act = nds_trj_lt - nds_trj_gs
+            plan_dis_act = np.linalg.norm(plan_vec_act, axis=1)
+            plan_vec_act[np.where(plan_dis_act > 4), :] = 0
+            sensi_r2p_act = plan_vec_act / np.linalg.norm(plan_dis_act) * 0.5 * 0.12 ** 2
+            sensi_r2u_act.append(np.mean(abs(dyna_mat * sensi_r2p_act)))
+
+            # simulated average
+            sensi_r2u_simu_ave_lt.append(np.mean(sensi_r2u_lt))
+            sensi_r2u_simu_ave_gs.append(np.mean(sensi_r2u_gs))
+
+            # simulated minimum
+            sensi_r2u_simu_min_lt.append(min(sensi_r2u_lt))
+            sensi_r2u_simu_min_gs.append(min(sensi_r2u_gs))
+
         "---- sava data ----"
         # prepare data
         df = pd.DataFrame([[strength_lt[i], min_self_strength_lt[i], ave_strength_lt[i], std_strength_lt[i],
@@ -1180,6 +1224,8 @@ class Simulator:
                             min_overall_strength_ipv_lt[i], min_self_strength_ipv_lt[i], ipv_lt[i],
                             min_overall_strength_ipv_gs[i], min_self_strength_ipv_gs[i], ipv_gs[i],
                             ave_semantic_res[i], semantic_res_std[i],
+                            sensi_r2u_act[i], sensi_r2u_simu_ave_lt[i], sensi_r2u_simu_min_lt[i],
+                            sensi_r2u_simu_ave_gs[i], sensi_r2u_simu_min_gs[i],
                             ] for i in range(len(ave_strength_lt))],
                           columns=['lt-self-actual str ', 'min str', 'ave str', 'std str',
                                    'gs-self-actual str ', 'min str', 'ave str', 'std str',
@@ -1189,6 +1235,8 @@ class Simulator:
                                    'min OA str ipv lt', 'min self str ipv lt', 'lt ipv',
                                    'min OA str ipv gs', 'min self str ipv gs', 'gs ipv',
                                    'ave semantic res', 'semantic res std',
+                                   'sensi_actual', 'ave sensi lt', 'min sensi lt',
+                                   'ave sensi gs', 'min sensi gs',
                                    ])
 
         # write data
@@ -1196,7 +1244,7 @@ class Simulator:
         with pd.ExcelWriter(file_name, mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
             # writer.book = book
             df.to_excel(writer, header=True, index=False,
-                        sheet_name=str(self.case_id) + '-' + str(self.gs_id),
+                        sheet_name=str(self.case_id),
                         startcol=0)
 
             # for column in df:
@@ -1579,9 +1627,9 @@ def main_analyze_interaction():
 
     bg_type = 'linear-gt'
     num_failed = 0
-
-    for case_id in range(0, 130):
-    # for case_id in {51}:
+    proc_bar = tqdm(range(0, 130))
+    # proc_bar = tqdm({51})
+    for case_id in proc_bar:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
@@ -1592,7 +1640,7 @@ def main_analyze_interaction():
             continue
         else:
 
-            print('start case:' + str(case_id))
+            # print('start case:' + str(case_id))
 
             simu = Simulator(case_id=case_id)
             simu.sim_type = 'nds'
@@ -1603,8 +1651,8 @@ def main_analyze_interaction():
             trajectory_collection = []
 
             for t in range(simu.case_len - 10):
-                print('time_step: ', t, '/', simu.case_len)
 
+                proc_bar.set_postfix({"processing": f"{t}"})
                 simu.simu_time = t
                 tag = 'conv-analysis-case' + str(case_id) + '-t' + str(t)
                 simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs, t=t)
@@ -1645,7 +1693,7 @@ def main_analyze_interaction():
                 # if t == 9:
                 #     simu.visualize_multi_interaction(trajectory_collection, t)
             simu.save_conv_meta(trajectory_collection,
-                                file_name='../outputs/5_gt_interaction/outputs/conv_meta_data20221205.xlsx',
+                                file_name='../outputs/5_gt_interaction/outputs/conv_meta_data20221207-new.xlsx',
                                 draw=False)
 
 
