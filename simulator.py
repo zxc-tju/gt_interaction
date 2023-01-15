@@ -4,6 +4,7 @@ Interaction simulator
 import copy
 import scipy.io
 import math
+import os.path
 from multiprocessing import Process, Manager
 import numpy as np
 import pandas as pd
@@ -12,11 +13,13 @@ from tools.utility import draw_rectangle, get_central_vertices
 from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
 from NDS_analysis import analyze_ipv_in_nds, cal_pet
+import xlsxwriter
 from viztracer import VizTracer
 import time
 from tqdm import tqdm
 
-sigma = 0.1
+sigma = 0.02
+INTERACTION_DIS = 4
 
 
 class Scenario:
@@ -65,7 +68,7 @@ class Simulator:
         self.agent_gs.conl_type = self.scenario.conl_type[1]
         self.tag = case_tag
 
-    def interact(self, simu_step=30, iter_limit=5,
+    def interact(self, simu_step=30, iter_limit=10,
                  make_video=False,
                  break_when_finish=False,
                  interactive=True):
@@ -86,7 +89,7 @@ class Simulator:
 
         if make_video:
             plt.ion()
-            _, ax = plt.subplots()
+            _, ax = plt.subplots(figsize=[8, 8])
 
         for t in range(self.num_step):
 
@@ -234,15 +237,15 @@ class Simulator:
                                self.agent_gs.heading / math.pi * 180, ax,
                                para_alpha=1, para_color='#7030A0')
 
-                plt.plot(self.agent_lt.trj_solution[:8, 0], self.agent_lt.trj_solution[:8, 1],
-                         '--', color='#0E76CF', alpha=0.5)
-                plt.plot(self.agent_gs.trj_solution[:8, 0], self.agent_gs.trj_solution[:8, 1],
-                         '--', color='#7030A0', alpha=0.5)
+                plt.plot(self.agent_lt.trj_solution[:10, 0], self.agent_lt.trj_solution[:10, 1],
+                         color='blue', alpha=0.5)
+                plt.plot(self.agent_gs.trj_solution[:10, 0], self.agent_gs.trj_solution[:10, 1],
+                         color='red', alpha=0.5)
 
                 ax.axis('scaled')
                 plt.show()
                 plt.pause(0.0001)
-                plt.savefig('../outputs/5_gt_interaction/figures/' + self.tag + '-' + str(t) + '.png', dpi=300)
+                plt.savefig('../outputs/5_gt_interaction/figures/replay case 113/' + self.tag + '-' + str(t) + '.png', dpi=300)
 
             if break_when_finish:
                 if self.agent_gs.observed_trajectory[-1, 0] < self.agent_lt.observed_trajectory[-1, 0] \
@@ -1004,7 +1007,7 @@ class Simulator:
                         sheet_name=sheet_name,
                         startcol=0, startrow=start_row - num_failed)
 
-    def save_conv_meta(self, trajectory_collection, file_name, draw=False):
+    def save_conv_meta(self, trajectory_collection, ipv_estimation_collection, file_name, draw=False):
         """
 
         Returns
@@ -1042,21 +1045,32 @@ class Simulator:
         ave_semantic_res = []
         semantic_res_std = []
 
-        sensi_r2u_act = []
+        sensi_r2u_actual = []
         sensi_r2u_simu_ave_lt = []
         sensi_r2u_simu_ave_gs = []
         sensi_r2u_simu_min_lt = []
         sensi_r2u_simu_min_gs = []
 
+        min_sensitivity_ipv_lt = []
+        min_sensitivity_ipv_gs = []
+
         ipv_lt = []  # estimated ipv expression
         ipv_gs = []
+
+        ipv_lt_coll = []
+        ipv_gs_coll = []
+        for lt_ipv in {-2, -1, -0.5, 0, 0.5, 1, 2}:
+            for gs_ipv in {-2, -1, -0.5, 0, 0.5, 1, 2}:
+                if 3 > lt_ipv+gs_ipv >= -0.5:
+                    ipv_lt_coll.append(lt_ipv)
+                    ipv_gs_coll.append(gs_ipv)
 
         for t in range(len(trajectory_collection)):
             trj_package = trajectory_collection[t]
 
             nds_trj_lt = np.array(self.lt_actual_trj[t:, 0:2])
             nds_trj_gs = np.array(self.gs_actual_trj[t:, 0:2])
-            compare_range = range(min(20, np.size(nds_trj_lt, 0)))
+            compare_range = range(min(19, np.size(nds_trj_lt, 0)))
             nds_trj_lt = nds_trj_lt[compare_range, :]
             nds_trj_gs = nds_trj_gs[compare_range, :]
 
@@ -1082,7 +1096,7 @@ class Simulator:
             semantic_res = []
             likeness = []
             for task_id in range(len(trj_package) - 1):
-                # lt track (observed in simulation and ground truth in nds)
+                # lt track (observed in simulation)
                 self_plan_lt = trj_package['task' + str(task_id)]['lt-self'][compare_range, :]
                 inter_plan_lt = trj_package['task' + str(task_id)]['lt-inter'][compare_range, :]
 
@@ -1095,37 +1109,38 @@ class Simulator:
                     plt.plot(self_plan_gs[:, 0], self_plan_gs[:, 1], color='purple')
                     # plt.plot(inter_plan_gs[:, 0], inter_plan_gs[:, 1], color='purple')
 
-                rel_dis_lt = np.linalg.norm(self_plan_lt - nds_trj_lt, axis=1)
-                rel_dis_gs = np.linalg.norm(self_plan_gs - nds_trj_gs, axis=1)
-
-                rel_dis = np.concatenate((rel_dis_lt, rel_dis_gs), axis=0)
-                likeness_temp = np.power(
-                    np.prod(
-                        (1 / sigma / np.sqrt(2 * math.pi))
-                        * np.exp(- rel_dis ** 2 / (2 * sigma ** 2)))
-                    , 1 / np.size(rel_dis, 0))
-                if likeness_temp < 0:
-                    likeness_temp = 0
-
-                likeness.append(likeness_temp)
+                # data preparation for event-level ipv estimation
+                # rel_dis_lt = np.linalg.norm(self_plan_lt[:6, :] - nds_trj_lt[:6, :], axis=1)
+                # rel_dis_gs = np.linalg.norm(self_plan_gs[:6, :] - nds_trj_gs[:6, :], axis=1)
+                #
+                # rel_dis = np.concatenate((rel_dis_lt, rel_dis_gs), axis=0)
+                # likeness_temp = np.power(
+                #     np.prod(
+                #         (1 / sigma / np.sqrt(2 * math.pi))
+                #         * np.exp(- rel_dis ** 2 / (2 * sigma ** 2)))
+                #     , 1 / np.size(rel_dis, 0))
+                # if likeness_temp < 0:
+                #     likeness_temp = 0
+                #
+                # likeness.append(likeness_temp)
 
                 "interaction strength indicated by plan deviation in each task"
-                self_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_lt - self_plan_lt, axis=1)))
-                inter_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_gs - inter_plan_lt, axis=1)))
-
-                self_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_gs - self_plan_gs, axis=1)))
-                inter_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_lt - inter_plan_gs, axis=1)))
+                # self_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_lt - self_plan_lt, axis=1)))
+                # inter_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_gs - inter_plan_lt, axis=1)))
+                #
+                # self_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_gs - self_plan_gs, axis=1)))
+                # inter_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_lt - inter_plan_gs, axis=1)))
 
                 "interaction strength indicated by reward sensitivity to next action"
                 plan_vec_lt = self_plan_lt - inter_plan_lt
                 plan_dis_lt = np.linalg.norm(plan_vec_lt, axis=1)
-                plan_vec_lt[np.where(plan_dis_lt > 4), :] = 0
+                plan_vec_lt[np.where(plan_dis_lt > INTERACTION_DIS), :] = 0
                 sensi_r2p_lt = plan_vec_lt / np.linalg.norm(plan_dis_lt) * 0.5 * 0.12 ** 2
                 sensi_r2u_lt.append(np.sum(abs(dyna_mat * sensi_r2p_lt)))
 
                 plan_vec_gs = self_plan_gs - inter_plan_gs
                 plan_dis_gs = np.linalg.norm(plan_vec_gs, axis=1)
-                plan_vec_gs[np.where(plan_dis_gs > 4), :] = 0
+                plan_vec_gs[np.where(plan_dis_gs > INTERACTION_DIS), :] = 0
                 sensi_r2p_gs = plan_vec_gs / np.linalg.norm(plan_dis_gs) * 0.5 * 0.12 ** 2
                 sensi_r2u_gs.append(np.sum(abs(dyna_mat * sensi_r2p_gs)))
 
@@ -1147,52 +1162,47 @@ class Simulator:
                     semantic_res.append(0)
             if draw:
                 plt.show()
-            "ipv estimation"
-            likeness = likeness / (sum(likeness))
-            ipv_lt_coll = [-0.5, -0.5, -0.5, -0.5, -0.5, 0, 0, 0, 0, 0, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1, 1, 1.5,
-                           1.5, 1.5, 1.5, 1.5]
-            # ipv_lt_coll = [-0.5, -0.5, -0.5, 0, 0, 0, 1, 1, 1]
-            ipv_lt.append(np.dot(likeness, ipv_lt_coll))
-            ipv_gs_coll = [-0.5, 0, 0.5, 1, 1.5, -0.5, 0, 0.5, 1, 1.5, -0.5, 0, 0.5, 1, 1.5, -0.5, 0, 0.5, 1, 1.5, -0.5,
-                           0, 0.5, 1, 1.5, ]
-            # ipv_gs_coll = [-0.5, 0, 1, -0.5, 0, 1, -0.5, 0, 1]
-            ipv_gs.append(np.dot(likeness, ipv_gs_coll))
+
+            "event-level ipv estimation"
+            # likeness = likeness / (sum(likeness))
+            # ipv_lt.append(np.dot(likeness, ipv_lt_coll))
+            # ipv_gs.append(np.dot(likeness, ipv_gs_coll))
 
             "actual interaction strength indicated by plan deviation"
-            strength_lt.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1)))
-            strength_gs.append(np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
-            strength_overall.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1))
-                                    + np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
+            # strength_lt.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1)))
+            # strength_gs.append(np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
+            # strength_overall.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1))
+            #                         + np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
 
             "simulated interaction strength of single agent"
-            ave_strength_lt.append(np.mean(self_plan_dev_lt))
-            std_strength_lt.append(np.std(self_plan_dev_lt))
-            ave_strength_gs.append(np.mean(self_plan_dev_gs))
-            std_strength_gs.append(np.std(self_plan_dev_gs))
+            # ave_strength_lt.append(np.mean(self_plan_dev_lt))
+            # std_strength_lt.append(np.std(self_plan_dev_lt))
+            # ave_strength_gs.append(np.mean(self_plan_dev_gs))
+            # std_strength_gs.append(np.std(self_plan_dev_gs))
 
             "find the ipv that minimize the ## overall ## interaction strength"
-            overall_plan_dev_lt = np.array(self_plan_dev_lt) + np.array(inter_plan_dev_lt)
-            min_overall_strength_id_lt = np.where(min(overall_plan_dev_lt) == overall_plan_dev_lt)
-            min_overall_strength_ipv_lt.append(ipv_lt_coll[min_overall_strength_id_lt[0][0]])
-            min_overall_strength_lt.append(min(overall_plan_dev_lt))
-            ave_overall_strength_lt.append(np.mean(overall_plan_dev_lt))
-            std_overall_strength_lt.append(np.std(overall_plan_dev_lt))
-
-            overall_plan_dev_gs = np.array(self_plan_dev_gs) + np.array(inter_plan_dev_gs)
-            min_overall_strength_id_gs = np.where(min(overall_plan_dev_gs) == overall_plan_dev_gs)
-            min_overall_strength_ipv_gs.append(ipv_gs_coll[min_overall_strength_id_gs[0][0]])
-            min_overall_strength_gs.append(min(overall_plan_dev_gs))
-            ave_overall_strength_gs.append(np.mean(overall_plan_dev_gs))
-            std_overall_strength_gs.append(np.std(overall_plan_dev_gs))
+            # overall_plan_dev_lt = np.array(self_plan_dev_lt) + np.array(inter_plan_dev_lt)
+            # min_overall_strength_id_lt = np.where(min(overall_plan_dev_lt) == overall_plan_dev_lt)
+            # min_overall_strength_ipv_lt.append(ipv_lt_coll[min_overall_strength_id_lt[0][0]])
+            # min_overall_strength_lt.append(min(overall_plan_dev_lt))
+            # ave_overall_strength_lt.append(np.mean(overall_plan_dev_lt))
+            # std_overall_strength_lt.append(np.std(overall_plan_dev_lt))
+            #
+            # overall_plan_dev_gs = np.array(self_plan_dev_gs) + np.array(inter_plan_dev_gs)
+            # min_overall_strength_id_gs = np.where(min(overall_plan_dev_gs) == overall_plan_dev_gs)
+            # min_overall_strength_ipv_gs.append(ipv_gs_coll[min_overall_strength_id_gs[0][0]])
+            # min_overall_strength_gs.append(min(overall_plan_dev_gs))
+            # ave_overall_strength_gs.append(np.mean(overall_plan_dev_gs))
+            # std_overall_strength_gs.append(np.std(overall_plan_dev_gs))
 
             "find the ipv that minimize the ## self ## interaction strength"
-            min_self_strength_id_lt = np.where(min(self_plan_dev_lt) == self_plan_dev_lt)
-            min_self_strength_ipv_lt.append(ipv_lt_coll[min_self_strength_id_lt[0][0]])
-            min_self_strength_lt.append(min(self_plan_dev_lt))
-
-            min_self_strength_id_gs = np.where(min(self_plan_dev_gs) == self_plan_dev_gs)
-            min_self_strength_ipv_gs.append(ipv_gs_coll[min_self_strength_id_gs[0][0]])
-            min_self_strength_gs.append(min(self_plan_dev_gs))
+            # min_self_strength_id_lt = np.where(min(self_plan_dev_lt) == self_plan_dev_lt)
+            # min_self_strength_ipv_lt.append(ipv_lt_coll[min_self_strength_id_lt[0][0]])
+            # min_self_strength_lt.append(min(self_plan_dev_lt))
+            #
+            # min_self_strength_id_gs = np.where(min(self_plan_dev_gs) == self_plan_dev_gs)
+            # min_self_strength_ipv_gs.append(ipv_gs_coll[min_self_strength_id_gs[0][0]])
+            # min_self_strength_gs.append(min(self_plan_dev_gs))
 
             "find semantic results"
             ave_semantic_res.append(np.mean(semantic_res))
@@ -1202,9 +1212,10 @@ class Simulator:
             # actual
             plan_vec_act = nds_trj_lt - nds_trj_gs
             plan_dis_act = np.linalg.norm(plan_vec_act, axis=1)
-            plan_vec_act[np.where(plan_dis_act > 4), :] = 0
-            sensi_r2p_act = plan_vec_act / np.linalg.norm(plan_dis_act) * 0.5 * 0.12 ** 2
-            sensi_r2u_act.append(np.sum(abs(dyna_mat * sensi_r2p_act)))
+            # print('min dis: ', min(plan_dis_act))
+            plan_vec_act[np.where(plan_dis_act > INTERACTION_DIS), :] = 0
+            sensi_r2p_actual = plan_vec_act / np.linalg.norm(plan_dis_act) * 0.5 * 0.12 ** 2
+            sensi_r2u_actual.append(np.sum(abs(dyna_mat * sensi_r2p_actual)))
 
             # simulated average
             sensi_r2u_simu_ave_lt.append(np.mean(sensi_r2u_lt))
@@ -1214,26 +1225,44 @@ class Simulator:
             sensi_r2u_simu_min_lt.append(min(sensi_r2u_lt))
             sensi_r2u_simu_min_gs.append(min(sensi_r2u_gs))
 
+            # ipv that minimize the overall interaction strength
+            min_sensi_id_lt = np.where(sensi_r2u_lt==min(sensi_r2u_lt))
+            min_sensi_id_gs = np.where(sensi_r2u_gs==min(sensi_r2u_gs))
+            min_sensitivity_ipv_lt.append(ipv_lt_coll[min_sensi_id_lt[0][0]] * math.pi / 8)
+            min_sensitivity_ipv_gs.append(ipv_gs_coll[min_sensi_id_gs[0][0]] * math.pi / 8)
+
         "---- sava data ----"
         # prepare data
-        df = pd.DataFrame([[strength_lt[i], min_self_strength_lt[i], ave_strength_lt[i], std_strength_lt[i],
-                            strength_gs[i], min_self_strength_gs[i], ave_strength_gs[i], std_strength_gs[i],
-                            strength_overall[i],
-                            min_overall_strength_lt[i], ave_overall_strength_lt[i], std_overall_strength_lt[i],
-                            min_overall_strength_gs[i], ave_overall_strength_gs[i], std_overall_strength_gs[i],
-                            min_overall_strength_ipv_lt[i], min_self_strength_ipv_lt[i], ipv_lt[i],
-                            min_overall_strength_ipv_gs[i], min_self_strength_ipv_gs[i], ipv_gs[i],
+        # df = pd.DataFrame([[strength_lt[i], min_self_strength_lt[i], ave_strength_lt[i], std_strength_lt[i],
+        #                     strength_gs[i], min_self_strength_gs[i], ave_strength_gs[i], std_strength_gs[i],
+        #                     strength_overall[i],
+        #                     min_overall_strength_lt[i], ave_overall_strength_lt[i], std_overall_strength_lt[i],
+        #                     min_overall_strength_gs[i], ave_overall_strength_gs[i], std_overall_strength_gs[i],
+        #                     min_overall_strength_ipv_lt[i], min_self_strength_ipv_lt[i], ipv_lt[i],
+        #                     min_overall_strength_ipv_gs[i], min_self_strength_ipv_gs[i], ipv_gs[i],
+        #                     ave_semantic_res[i], semantic_res_std[i],
+        #                     sensi_r2u_actual[i], sensi_r2u_simu_ave_lt[i], sensi_r2u_simu_min_lt[i],
+        #                     sensi_r2u_simu_ave_gs[i], sensi_r2u_simu_min_gs[i],
+        #                     ] for i in range(len(ave_strength_lt))],
+        #                   columns=['lt-self-actual str ', 'min str', 'ave str', 'std str',
+        #                            'gs-self-actual str ', 'min str', 'ave str', 'std str',
+        #                            'actual str_overall',
+        #                            'min OA str_lt', 'ave str lt', 'std str lt',
+        #                            'min OA str_gs', 'ave str gs', 'std str gs',
+        #                            'min OA str ipv lt', 'min self str ipv lt', 'lt ipv',
+        #                            'min OA str ipv gs', 'min self str ipv gs', 'gs ipv',
+        #                            'ave semantic res', 'semantic res std',
+        #                            'sensi_actual', 'ave sensi lt', 'min sensi lt',
+        #                            'ave sensi gs', 'min sensi gs',
+        #                            ])
+        df = pd.DataFrame([[ipv_estimation_collection[i][0], min_sensitivity_ipv_lt[i],
+                            ipv_estimation_collection[i][1], min_sensitivity_ipv_gs[i],
                             ave_semantic_res[i], semantic_res_std[i],
-                            sensi_r2u_act[i], sensi_r2u_simu_ave_lt[i], sensi_r2u_simu_min_lt[i],
+                            sensi_r2u_actual[i], sensi_r2u_simu_ave_lt[i], sensi_r2u_simu_min_lt[i],
                             sensi_r2u_simu_ave_gs[i], sensi_r2u_simu_min_gs[i],
-                            ] for i in range(len(ave_strength_lt))],
-                          columns=['lt-self-actual str ', 'min str', 'ave str', 'std str',
-                                   'gs-self-actual str ', 'min str', 'ave str', 'std str',
-                                   'actual str_overall',
-                                   'min OA str_lt', 'ave str lt', 'std str lt',
-                                   'min OA str_gs', 'ave str gs', 'std str gs',
-                                   'min OA str ipv lt', 'min self str ipv lt', 'lt ipv',
-                                   'min OA str ipv gs', 'min self str ipv gs', 'gs ipv',
+                            ] for i in range(len(ave_semantic_res))],
+                          columns=['lt ipv', 'min sensi lt ipv',
+                                   'gs ipv', 'min sensi gs ipv',
                                    'ave semantic res', 'semantic res std',
                                    'sensi_actual', 'ave sensi lt', 'min sensi lt',
                                    'ave sensi gs', 'min sensi gs',
@@ -1340,8 +1369,8 @@ def get_semantic_result(track_1, track_2, case_type='simu_left_turn'):
 def run_interaction(case_id, task_id, t, lt_ipv, gs_ipv, returns):
     simu = Simulator(case_id=case_id)
     simu.sim_type = 'nds'
-    controller_type_lt = 'linear-gt'
-    controller_type_gs = 'linear-gt'
+    controller_type_lt = 'gt'
+    controller_type_gs = 'gt'
     simu.read_nds_scenario(controller_type_lt, controller_type_gs)
 
     simu.simu_time = t
@@ -1355,10 +1384,10 @@ def run_interaction(case_id, task_id, t, lt_ipv, gs_ipv, returns):
     simu.agent_lt.target = 'lt_nds'
     simu.agent_lt.estimated_inter_agent[0].target = 'gs_nds'
 
-    simu.agent_gs.ipv = gs_ipv * math.pi / 4
-    simu.agent_gs.estimated_inter_agent[0].ipv = lt_ipv * math.pi / 4
-    simu.agent_lt.ipv = lt_ipv * math.pi / 4
-    simu.agent_lt.estimated_inter_agent[0].ipv = gs_ipv * math.pi / 4
+    simu.agent_gs.ipv = gs_ipv * math.pi / 8
+    simu.agent_gs.estimated_inter_agent[0].ipv = lt_ipv * math.pi / 8
+    simu.agent_lt.ipv = lt_ipv * math.pi / 8
+    simu.agent_lt.estimated_inter_agent[0].ipv = gs_ipv * math.pi / 8
 
     simu.interact(simu_step=1)
     # simu.visualize_single_step(file_path='../outputs/5_gt_interaction/figures/convergence analysis-'
@@ -1393,10 +1422,10 @@ def run_interaction_multi(case_id, task_id, t, lt_ipv, gs_ipv, gs_id, returns):
     simu.agent_lt.target = 'lt_nds'
     simu.agent_lt.estimated_inter_agent.target = 'gs_nds'
 
-    simu.agent_gs.ipv = gs_ipv * math.pi / 4
-    simu.agent_gs.estimated_inter_agent.ipv = lt_ipv * math.pi / 4
-    simu.agent_lt.ipv = lt_ipv * math.pi / 4
-    simu.agent_lt.estimated_inter_agent.ipv = gs_ipv * math.pi / 4
+    simu.agent_gs.ipv = gs_ipv * math.pi / 8
+    simu.agent_gs.estimated_inter_agent.ipv = lt_ipv * math.pi / 8
+    simu.agent_lt.ipv = lt_ipv * math.pi / 8
+    simu.agent_lt.estimated_inter_agent.ipv = gs_ipv * math.pi / 8
 
     simu.interact(simu_step=1)
     # simu.visualize_single_step(file_path='../outputs/5_gt_interaction/figures/convergence analysis-'
@@ -1557,12 +1586,12 @@ def main_simulate_nds():
            * 'replay' *** Set dt as 0.12 (in agent.py) before simulation ***
        """
 
-    model_type = 'linear-gt'
+    model_type = 'replay'
 
     num_failed = 0
 
     # for case_id in range(130):
-    for case_id in {51}:
+    for case_id in {113}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
@@ -1625,10 +1654,16 @@ def main_analyze_interaction():
     main for analyzing interaction strength and convergence in nds cases where LT car interact with a single GS car
     """
 
-    bg_type = 'linear-gt'
+    bg_type = 'gt'
     num_failed = 0
+    file_name = '../outputs/5_gt_interaction/outputs/conv_meta_data20230112.xlsx'
+    if not os.path.exists(file_name):
+        workbook = xlsxwriter.Workbook(file_name)
+        workbook.add_worksheet()
+        workbook.close()
+
     proc_bar = tqdm(range(0, 130))
-    # proc_bar = tqdm({51})
+    # proc_bar = tqdm({50})
     for case_id in proc_bar:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
@@ -1636,6 +1671,9 @@ def main_analyze_interaction():
             continue
         elif case_id in {12, 13, 24, 26, 28, 31, 32, 33, 37, 38, 46, 47, 48, 52, 56, 59, 65, 66, 69, 77, 82, 83, 84, 90,
                          91, 92, 94, 96, 97, 98, 100}:  # no path-crossing event
+            num_failed += 1
+            continue
+        elif case_id in {7, 23, 53, 54, 55, 79, 112, 114, 115, 116, 129}:  # influenced by non-moter road users
             num_failed += 1
             continue
         else:
@@ -1649,8 +1687,10 @@ def main_analyze_interaction():
             simu.read_nds_scenario(controller_type_lt, controller_type_gs)
 
             trajectory_collection = []
+            ipv_estimation_collection = []
 
             for t in range(simu.case_len - 10):
+            # for t in range(1):
 
                 proc_bar.set_postfix({"processing": f"{t}"})
                 simu.simu_time = t
@@ -1666,18 +1706,35 @@ def main_analyze_interaction():
                     simu.agent_lt.target = 'lt_nds'
                     simu.agent_lt.estimated_inter_agent[0].target = 'gs_nds'
 
+                    # save origin for ipv estimation
+                    agent_lt_temp = copy.deepcopy(simu.agent_lt)
+                    agent_gs_temp = copy.deepcopy(simu.agent_gs)
+
+                    "individual-level ipv estimation"
+                    nds_trj_lt = np.array(simu.lt_actual_trj[t:, 0:2])
+                    nds_trj_gs = np.array(simu.gs_actual_trj[t:, 0:2])
+                    compare_range = range(min(10, np.size(nds_trj_lt, 0)))
+                    nds_trj_lt = nds_trj_lt[compare_range, :]
+                    nds_trj_gs = nds_trj_gs[compare_range, :]
+
+                    agent_lt_temp.estimate_self_ipv(nds_trj_lt, nds_trj_gs)
+                    agent_gs_temp.estimate_self_ipv(nds_trj_gs, nds_trj_lt)
+
+                    ipv_estimation_collection.append([agent_lt_temp.ipv, agent_gs_temp.ipv])
+
                     # worker pairs for generating trajectory under different ipv combinations
                     tasks = []
                     manager = Manager()
                     traj_coll_temp = manager.dict()
                     task_id = 0
-                    for lt_ipv in {-0.5, 0, 0.5, 1, 1.5}:
-                        for gs_ipv in {-0.5, 0, 0.5, 1, 1.5}:
-                            task = Process(target=run_interaction,
-                                           args=(case_id, task_id, t, lt_ipv, gs_ipv, traj_coll_temp))
-                            task.start()
-                            tasks.append(task)
-                            task_id += 1
+                    for lt_ipv in {-2, -1, -0.5, 0, 0.5, 1, 2}:
+                        for gs_ipv in {-2, -1, -0.5, 0, 0.5, 1, 2}:
+                            if 3 > lt_ipv+gs_ipv >= -0.5:
+                                task = Process(target=run_interaction,
+                                               args=(case_id, task_id, t, lt_ipv, gs_ipv, traj_coll_temp))
+                                task.start()
+                                tasks.append(task)
+                                task_id += 1
 
                     for task in tasks:
                         task.join()
@@ -1690,10 +1747,10 @@ def main_analyze_interaction():
                                                          'gs': simu.agent_gs.trj_solution[:, 0:2]}
 
                 trajectory_collection.append(traj_coll_temp)
-                # if t == 9:
-                #     simu.visualize_multi_interaction(trajectory_collection, t)
-            simu.save_conv_meta(trajectory_collection,
-                                file_name='../outputs/5_gt_interaction/outputs/conv_meta_data20221207-02.xlsx',
+                # simu.visualize_multi_interaction(trajectory_collection, t)
+
+            simu.save_conv_meta(trajectory_collection, ipv_estimation_collection,
+                                file_name=file_name,
                                 draw=False)
 
 
@@ -1753,8 +1810,8 @@ def main_analyze_multi_interaction():
                     manager = Manager()
                     traj_coll_temp = manager.dict()
                     task_id = 0
-                    # for lt_ipv in {-0.5, 0, 0.5, 1, 1.5}:
-                    #     for gs_ipv in {-0.5, 0, 0.5, 1, 1.5}:
+                    # for lt_ipv in {-3, -1.5, 0, 1.5, 3}:
+                    #     for gs_ipv in {-3, -1.5, 0, 1.5, 3}:
                     for lt_ipv in {-0.5, 0, 1}:
                         for gs_ipv in {-0.5, 0, 1}:
                             task = Process(target=run_interaction_multi,

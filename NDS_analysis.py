@@ -487,7 +487,7 @@ def visualize_nds(case_id):
                  color='blue')
         # ax1.legend()
         plt.pause(0.1)
-        plt.savefig('figures/case89/' + 'case-' + str(case_id) + '-' + str(t) + '.png', dpi=300)
+        plt.savefig('../outputs/5_gt_interaction/figures/replay case ' + str(case_id) + '/' + str(t) + '.png', dpi=300)
 
     # # show full track of all agents
     # ax2.plot(lt_info[:, 0], lt_info[:, 1],
@@ -512,5 +512,5 @@ if __name__ == '__main__':
     #     analyze_nds(case_index)
     # analyze_nds(30)
 
-    # visualize_nds(89)
-    estimate_ipv_in_nds(89)
+    # visualize_nds(113)
+    estimate_ipv_in_nds(129)

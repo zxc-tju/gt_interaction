@@ -8,13 +8,14 @@ from scipy.optimize import minimize, linprog
 from tools.utility import get_central_vertices, bicycle_model, mass_point_model, get_intersection_point, CalcRefLine
 from tools.Lattice import TrajPoint
 import copy
+import warnings
 from concurrent.futures import ProcessPoolExecutor
 import viztracer
 import time
 
 # simulation setting
 dt = 0.12
-TRACK_LEN = 25
+TRACK_LEN = 20
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 2
 
@@ -31,7 +32,7 @@ WEIGHT_GRP = 0.22
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
-MAX_ACCELERATION = 1
+MAX_ACCELERATION = 1.0
 MAX_JERK = 2.0
 
 # initial guess on interacting agent's IPV
@@ -460,7 +461,10 @@ class Agent:
 
         fun = utility_fun(self_info, inter_track)  # objective function
         # time1 = time.perf_counter()
-        res = minimize(fun, u0, bounds=bds, method='SLSQP')
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = minimize(fun, u0, bounds=bds, method='SLSQP')
         # time2 = time.perf_counter()
         # print(time2 - time1)
 
@@ -495,6 +499,34 @@ class Agent:
                     break
             virtual_agent_track_collection.append(virtual_inter_agent.trj_solution)
         self.estimated_inter_agent[0].virtual_track_collection.append(virtual_agent_track_collection)
+
+    def estimate_self_ipv(self, self_actual_track, inter_track):
+
+        ipv_range = virtual_agent_IPV_range
+        # plt.plot(self_actual_track[:, 0], self_actual_track[:, 1], color='green')
+        for ipv_temp in ipv_range:
+            agent_self_temp = copy.deepcopy(self)
+            agent_self_temp.ipv = ipv_temp
+            # generate track with varied ipv
+            virtual_track_temp = agent_self_temp.solve_optimization(inter_track)
+            # save track into a collection
+            self.virtual_track_collection.append(virtual_track_temp[:, 0:2])
+        #     plt.plot(virtual_track_temp[:, 0], virtual_track_temp[:, 1])
+        # plt.show()
+
+        # calculate reliability of each track
+        # ipv_weight = cal_reliability([],
+        #                              self_actual_track,
+        #                              self.virtual_track_collection,
+        #                              self.target)
+        ipv_weight = cal_traj_reliability([], self_actual_track, self.virtual_track_collection, self.target)
+
+        # weighted sum of all candidates' IPVs
+        self.ipv = sum(ipv_range * ipv_weight)
+        self.ipv_error = 1 - np.sqrt(sum(ipv_weight ** 2))
+        # # save updated ipv and estimation error
+        # self.ipv_collection.append(self.ipv)
+        # self.ipv_error_collection.append(self.ipv_error)
 
 
 def get_cost_param(last_track_features, last_track, last_track_inter_collection, ipv):
@@ -790,13 +822,13 @@ if __name__ == '__main__':
     # agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs1), copy.deepcopy(agent_gs2)]
     agent_lt.estimated_inter_agent = [copy.deepcopy(agent_gs1)]
 
-    agent_lt.ipv = 1 * math.pi / 8
+    agent_lt.ipv = 2 * math.pi / 8
     agent_lt.estimated_inter_agent[0].ipv = 1 * math.pi / 8
     # agent_lt.estimated_inter_agent[1].ipv = 0 * math.pi / 8
 
     print('track len:', TRACK_LEN)
     time_all1 = time.perf_counter()
-    agent_lt.lp_ibr_interact(iter_limit=10, interactive=True)
+    agent_lt.lp_ibr_interact(iter_limit=50, interactive=True)
     time_all2 = time.perf_counter()
     print('LP overall time:', time_all2 - time_all1)
 
