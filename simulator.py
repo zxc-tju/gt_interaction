@@ -1125,11 +1125,11 @@ class Simulator:
                 # likeness.append(likeness_temp)
 
                 "interaction strength indicated by plan deviation in each task"
-                # self_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_lt - self_plan_lt, axis=1)))
-                # inter_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_gs - inter_plan_lt, axis=1)))
-                #
-                # self_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_gs - self_plan_gs, axis=1)))
-                # inter_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_lt - inter_plan_gs, axis=1)))
+                self_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_lt - self_plan_lt, axis=1)))
+                inter_plan_dev_lt.append(np.mean(np.linalg.norm(self_opt_gs - inter_plan_lt, axis=1)))
+
+                self_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_gs - self_plan_gs, axis=1)))
+                inter_plan_dev_gs.append(np.mean(np.linalg.norm(self_opt_lt - inter_plan_gs, axis=1)))
 
                 "interaction strength indicated by reward sensitivity to next action"
                 plan_vec_lt = self_plan_lt - inter_plan_lt
@@ -1169,40 +1169,40 @@ class Simulator:
             # ipv_gs.append(np.dot(likeness, ipv_gs_coll))
 
             "actual interaction strength indicated by plan deviation"
-            # strength_lt.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1)))
-            # strength_gs.append(np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
-            # strength_overall.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1))
-            #                         + np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
+            strength_lt.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1)))
+            strength_gs.append(np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
+            strength_overall.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1))
+                                    + np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
 
             "simulated interaction strength of single agent"
-            # ave_strength_lt.append(np.mean(self_plan_dev_lt))
-            # std_strength_lt.append(np.std(self_plan_dev_lt))
-            # ave_strength_gs.append(np.mean(self_plan_dev_gs))
-            # std_strength_gs.append(np.std(self_plan_dev_gs))
+            ave_strength_lt.append(np.mean(self_plan_dev_lt))
+            std_strength_lt.append(np.std(self_plan_dev_lt))
+            ave_strength_gs.append(np.mean(self_plan_dev_gs))
+            std_strength_gs.append(np.std(self_plan_dev_gs))
 
             "find the ipv that minimize the ## overall ## interaction strength"
-            # overall_plan_dev_lt = np.array(self_plan_dev_lt) + np.array(inter_plan_dev_lt)
-            # min_overall_strength_id_lt = np.where(min(overall_plan_dev_lt) == overall_plan_dev_lt)
-            # min_overall_strength_ipv_lt.append(ipv_lt_coll[min_overall_strength_id_lt[0][0]])
-            # min_overall_strength_lt.append(min(overall_plan_dev_lt))
-            # ave_overall_strength_lt.append(np.mean(overall_plan_dev_lt))
-            # std_overall_strength_lt.append(np.std(overall_plan_dev_lt))
-            #
-            # overall_plan_dev_gs = np.array(self_plan_dev_gs) + np.array(inter_plan_dev_gs)
-            # min_overall_strength_id_gs = np.where(min(overall_plan_dev_gs) == overall_plan_dev_gs)
-            # min_overall_strength_ipv_gs.append(ipv_gs_coll[min_overall_strength_id_gs[0][0]])
-            # min_overall_strength_gs.append(min(overall_plan_dev_gs))
-            # ave_overall_strength_gs.append(np.mean(overall_plan_dev_gs))
-            # std_overall_strength_gs.append(np.std(overall_plan_dev_gs))
+            overall_plan_dev_lt = np.array(self_plan_dev_lt) + np.array(inter_plan_dev_lt)
+            min_overall_strength_id_lt = np.where(min(overall_plan_dev_lt) == overall_plan_dev_lt)
+            min_overall_strength_ipv_lt.append(ipv_lt_coll[min_overall_strength_id_lt[0][0]] * math.pi / 8)
+            min_overall_strength_lt.append(min(overall_plan_dev_lt))
+            ave_overall_strength_lt.append(np.mean(overall_plan_dev_lt))
+            std_overall_strength_lt.append(np.std(overall_plan_dev_lt))
+
+            overall_plan_dev_gs = np.array(self_plan_dev_gs) + np.array(inter_plan_dev_gs)
+            min_overall_strength_id_gs = np.where(min(overall_plan_dev_gs) == overall_plan_dev_gs)
+            min_overall_strength_ipv_gs.append(ipv_gs_coll[min_overall_strength_id_gs[0][0]] * math.pi / 8)
+            min_overall_strength_gs.append(min(overall_plan_dev_gs))
+            ave_overall_strength_gs.append(np.mean(overall_plan_dev_gs))
+            std_overall_strength_gs.append(np.std(overall_plan_dev_gs))
 
             "find the ipv that minimize the ## self ## interaction strength"
-            # min_self_strength_id_lt = np.where(min(self_plan_dev_lt) == self_plan_dev_lt)
-            # min_self_strength_ipv_lt.append(ipv_lt_coll[min_self_strength_id_lt[0][0]])
-            # min_self_strength_lt.append(min(self_plan_dev_lt))
-            #
-            # min_self_strength_id_gs = np.where(min(self_plan_dev_gs) == self_plan_dev_gs)
-            # min_self_strength_ipv_gs.append(ipv_gs_coll[min_self_strength_id_gs[0][0]])
-            # min_self_strength_gs.append(min(self_plan_dev_gs))
+            min_self_strength_id_lt = np.where(min(self_plan_dev_lt) == self_plan_dev_lt)
+            min_self_strength_ipv_lt.append(ipv_lt_coll[min_self_strength_id_lt[0][0]] * math.pi / 8)
+            min_self_strength_lt.append(min(self_plan_dev_lt))
+
+            min_self_strength_id_gs = np.where(min(self_plan_dev_gs) == self_plan_dev_gs)
+            min_self_strength_ipv_gs.append(ipv_gs_coll[min_self_strength_id_gs[0][0]] * math.pi / 8)
+            min_self_strength_gs.append(min(self_plan_dev_gs))
 
             "find semantic results"
             ave_semantic_res.append(np.mean(semantic_res))
@@ -1233,40 +1233,40 @@ class Simulator:
 
         "---- sava data ----"
         # prepare data
-        # df = pd.DataFrame([[strength_lt[i], min_self_strength_lt[i], ave_strength_lt[i], std_strength_lt[i],
-        #                     strength_gs[i], min_self_strength_gs[i], ave_strength_gs[i], std_strength_gs[i],
-        #                     strength_overall[i],
-        #                     min_overall_strength_lt[i], ave_overall_strength_lt[i], std_overall_strength_lt[i],
-        #                     min_overall_strength_gs[i], ave_overall_strength_gs[i], std_overall_strength_gs[i],
-        #                     min_overall_strength_ipv_lt[i], min_self_strength_ipv_lt[i], ipv_lt[i],
-        #                     min_overall_strength_ipv_gs[i], min_self_strength_ipv_gs[i], ipv_gs[i],
-        #                     ave_semantic_res[i], semantic_res_std[i],
-        #                     sensi_r2u_actual[i], sensi_r2u_simu_ave_lt[i], sensi_r2u_simu_min_lt[i],
-        #                     sensi_r2u_simu_ave_gs[i], sensi_r2u_simu_min_gs[i],
-        #                     ] for i in range(len(ave_strength_lt))],
-        #                   columns=['lt-self-actual str ', 'min str', 'ave str', 'std str',
-        #                            'gs-self-actual str ', 'min str', 'ave str', 'std str',
-        #                            'actual str_overall',
-        #                            'min OA str_lt', 'ave str lt', 'std str lt',
-        #                            'min OA str_gs', 'ave str gs', 'std str gs',
-        #                            'min OA str ipv lt', 'min self str ipv lt', 'lt ipv',
-        #                            'min OA str ipv gs', 'min self str ipv gs', 'gs ipv',
-        #                            'ave semantic res', 'semantic res std',
-        #                            'sensi_actual', 'ave sensi lt', 'min sensi lt',
-        #                            'ave sensi gs', 'min sensi gs',
-        #                            ])
-        df = pd.DataFrame([[ipv_estimation_collection[i][0], min_sensitivity_ipv_lt[i],
-                            ipv_estimation_collection[i][1], min_sensitivity_ipv_gs[i],
+        df = pd.DataFrame([[strength_lt[i], min_self_strength_lt[i], ave_strength_lt[i], std_strength_lt[i],
+                            strength_gs[i], min_self_strength_gs[i], ave_strength_gs[i], std_strength_gs[i],
+                            strength_overall[i],
+                            min_overall_strength_lt[i], ave_overall_strength_lt[i], std_overall_strength_lt[i],
+                            min_overall_strength_gs[i], ave_overall_strength_gs[i], std_overall_strength_gs[i],
+                            min_overall_strength_ipv_lt[i], min_self_strength_ipv_lt[i], ipv_estimation_collection[i][0],
+                            min_overall_strength_ipv_gs[i], min_self_strength_ipv_gs[i], ipv_estimation_collection[i][1],
                             ave_semantic_res[i], semantic_res_std[i],
                             sensi_r2u_actual[i], sensi_r2u_simu_ave_lt[i], sensi_r2u_simu_min_lt[i],
                             sensi_r2u_simu_ave_gs[i], sensi_r2u_simu_min_gs[i],
-                            ] for i in range(len(ave_semantic_res))],
-                          columns=['lt ipv', 'min sensi lt ipv',
-                                   'gs ipv', 'min sensi gs ipv',
+                            ] for i in range(len(ave_strength_lt))],
+                          columns=['lt-self-str-actual', '-min', '-ave', '-std',
+                                   'gs-self-str-actual', '-min', '-ave', '-std',
+                                   'overall-str-actual',
+                                   'min_OA_str from lt', 'ave_OA_str from lt', 'std_OA_str from lt',
+                                   'min_OA_str from gs', 'ave_OA_str from gs', 'std_OA_str from gs',
+                                   'ipv_lt leads min_OA_str', 'ipv lt leads min_self_str', 'lt ipv',
+                                   'ipv_gs leads min_OA_str', 'ipv gs leads min_self_str', 'gs ipv',
                                    'ave semantic res', 'semantic res std',
                                    'sensi_actual', 'ave sensi lt', 'min sensi lt',
                                    'ave sensi gs', 'min sensi gs',
                                    ])
+        # df = pd.DataFrame([[ipv_estimation_collection[i][0], min_sensitivity_ipv_lt[i],
+        #                     ipv_estimation_collection[i][1], min_sensitivity_ipv_gs[i],
+        #                     ave_semantic_res[i], semantic_res_std[i],
+        #                     sensi_r2u_actual[i], sensi_r2u_simu_ave_lt[i], sensi_r2u_simu_min_lt[i],
+        #                     sensi_r2u_simu_ave_gs[i], sensi_r2u_simu_min_gs[i],
+        #                     ] for i in range(len(ave_semantic_res))],
+        #                   columns=['lt ipv', 'min sensi lt ipv',
+        #                            'gs ipv', 'min sensi gs ipv',
+        #                            'ave semantic res', 'semantic res std',
+        #                            'sensi_actual', 'ave sensi lt', 'min sensi lt',
+        #                            'ave sensi gs', 'min sensi gs',
+        #                            ])
 
         # write data
         # book = load_workbook(file_name)
