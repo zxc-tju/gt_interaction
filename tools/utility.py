@@ -84,14 +84,14 @@ def bicycle_model(u, init_state, TRACK_LEN, dt):
     return np.array(track)
 
 
-def mass_point_model(u, init_state, TRACK_LEN, dt):
+def mass_point_model(u, init_state,dt):
 
     # u = np.array([u[0:TRACK_LEN - 1], u[TRACK_LEN - 1:]]).T
     x, y, vx, vy, h = init_state
     track = [[x, y, vx, vy, h]]
-    for i in range(TRACK_LEN-1):
+    for i in range(int(np.size(u)/2)):
         vx = vx + u[i] * dt
-        vy = vy + u[i+TRACK_LEN-1] * dt
+        vy = vy + u[i+int(np.size(u)/2)] * dt
         x = x + vx * dt
         y = y + vy * dt
         heading = math.atan(vy/vx)

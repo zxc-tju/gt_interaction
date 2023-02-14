@@ -15,7 +15,7 @@ import time
 
 # simulation setting
 dt = 0.12
-TRACK_LEN = 20
+TRACK_LEN = 30
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 2
 
@@ -71,7 +71,7 @@ class Agent:
         self.virtual_track_collection = []
         self.plan_count = 0
 
-    def lp_ibr_interact(self, iter_limit=10, interactive=True):
+    def lp_ibr_interact(self, iter_limit=10, interactive=True, horizon=TRACK_LEN):
         """
         Interact with the estimated interacting agent. This agent's IPV is continuously updated.
         Note that we assume:
@@ -85,9 +85,9 @@ class Agent:
         init_state = [p[0], p[1], v[0], v[1], h]  # initial state
 
         " ==== initialize the 'last track' for all interacting agents ==== "
-        last_track_self = mass_point_model(0.1 * np.ones([TRACK_LEN * 2 - 2]), init_state, TRACK_LEN, dt)
+        last_track_self = mass_point_model(0.1 * np.ones([horizon * 2 - 2]), init_state, dt)
         last_track_self = last_track_self[:, 0:2]
-        record_track_inter = np.zeros([TRACK_LEN, 2])
+        record_track_inter = np.zeros([horizon, 2])
 
         last_track_inter = []  # save all interacting agents' track in a list
 
@@ -97,7 +97,7 @@ class Agent:
                       inter_agent.heading
             init_state = [p[0], p[1], v[0], v[1], h]  # initial state
 
-            last_track_inter_single = mass_point_model(0.1 * np.ones([TRACK_LEN * 2 - 2]), init_state, TRACK_LEN, dt)
+            last_track_inter_single = mass_point_model(0.1 * np.ones([horizon * 2 - 2]), init_state, dt)
 
             # plan for interacting agent
             new_track_inter = inter_agent. \
@@ -181,6 +181,7 @@ class Agent:
 
         p, v, h = self.position, self.velocity, self.heading
         init_state_4_kine = [p[0], p[1], v[0], v[1], h]  # initial state
+        track_len = np.size(last_track_self, 0)
 
         last_track_features = []
         for last_track_inter in last_track_inter_collection:
@@ -197,7 +198,7 @@ class Agent:
         # lane_deviation_tolerance = 0.3  # for ramp
         lane_deviation_tolerance = 2.5  # for left-turn
 
-        bounds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(2 * TRACK_LEN - 2)] + \
+        bounds = [(-MAX_ACCELERATION, MAX_ACCELERATION) for _ in range(2 * track_len - 2)] + \
                  [(0, lane_deviation_tolerance)]
 
         # opt = {'disp': True}
@@ -207,7 +208,7 @@ class Agent:
 
         self.action = res.x
 
-        self.trj_solution = mass_point_model(self.action, init_state_4_kine, TRACK_LEN, dt)  # get trajectory
+        self.trj_solution = mass_point_model(self.action, init_state_4_kine, dt)  # get trajectory
         # self.in_loop_draw(last_track_self, last_track_inter)
 
         return self.trj_solution[:, 0:2]
@@ -530,13 +531,14 @@ class Agent:
 
 
 def get_cost_param(last_track_features, last_track, last_track_inter_collection, ipv):
-    param = np.zeros([TRACK_LEN * 2 - 1, 1])
-    dynamic_mat = np.zeros([TRACK_LEN - 1, TRACK_LEN - 1])
+    track_len = np.size(last_track, 0)
+    param = np.zeros([track_len * 2 - 1, 1])
+    dynamic_mat = np.zeros([track_len - 1, track_len - 1])
 
     _, tao, vec_t, vec_n, kappa = last_track_features[0]
 
-    for c in range(TRACK_LEN - 1):
-        for r in range(c, TRACK_LEN - 1):
+    for c in range(track_len - 1):
+        for r in range(c, track_len - 1):
             dynamic_mat[c, r] = (r - c + 1 - 0.5) * dt ** 2
 
     #  stable weight setting for 1-1 interaction [1, 0.7, 1]
@@ -545,47 +547,48 @@ def get_cost_param(last_track_features, last_track, last_track_inter_collection,
     weight_inter = 1 * math.sin(ipv)
 
     "cost of lane deviation"
-    param[TRACK_LEN * 2 - 2] = 1 * weight_deviation  # weight of deviation cost
+    param[track_len * 2 - 2] = 1 * weight_deviation  # weight of deviation cost
 
     "reward of travel progress"
     param_travel = vec_t[-1] / (1 + kappa[-1] * np.dot((tao[-1] - last_track[-1, :]), vec_n[-1, :]))
 
-    param[0: TRACK_LEN - 1] -= weight_travel * \
-                               np.reshape(param_travel[0] * dynamic_mat[:, TRACK_LEN - 2], [TRACK_LEN - 1, 1])
-    param[TRACK_LEN - 1: TRACK_LEN * 2 - 2] -= weight_travel * \
-                                               np.reshape(param_travel[1] * dynamic_mat[:, TRACK_LEN - 2],
-                                                          [TRACK_LEN - 1, 1])
+    param[0: track_len - 1] -= weight_travel * \
+                               np.reshape(param_travel[0] * dynamic_mat[:, track_len - 2], [track_len - 1, 1])
+    param[track_len - 1: track_len * 2 - 2] -= weight_travel * \
+                                               np.reshape(param_travel[1] * dynamic_mat[:, track_len - 2],
+                                                          [track_len - 1, 1])
 
     for i, last_track_inter in enumerate(last_track_inter_collection):
         miu, _, _, _, _ = last_track_features[i]
         "reward of interacting agent"
-        for k in range(TRACK_LEN - 1):
+        for k in range(track_len - 1):
             if miu[k + 1]:
                 p_temp = miu[k] / np.linalg.norm(last_track[k, :] - last_track_inter[k, :]) \
                          * (last_track[k, :] - last_track_inter[k, :])
 
-                param[0: TRACK_LEN - 1] -= weight_inter * \
-                                           np.reshape(p_temp[0] * dynamic_mat[:, k], [TRACK_LEN - 1, 1])
+                param[0: track_len - 1] -= weight_inter * \
+                                           np.reshape(p_temp[0] * dynamic_mat[:, k], [track_len - 1, 1])
 
-                param[TRACK_LEN - 1: TRACK_LEN * 2 - 2] -= weight_inter * \
-                                                           np.reshape(p_temp[1] * dynamic_mat[:, k], [TRACK_LEN - 1, 1])
+                param[track_len - 1: track_len * 2 - 2] -= weight_inter * \
+                                                           np.reshape(p_temp[1] * dynamic_mat[:, k], [track_len - 1, 1])
 
     return param
 
 
 def get_ub_param(last_track_features, last_track_self, last_track_inter_collection, p, v, ipv, interactive=True):
     _, tao, _, vec_n, _ = last_track_features[0]
+    track_len = np.size(last_track_self, 0)
 
     inter_num = len(last_track_inter_collection)
 
-    range_x = range(0, TRACK_LEN - 1)
-    range_y = range(TRACK_LEN - 1, TRACK_LEN * 2 - 2)
+    range_x = range(0, track_len - 1)
+    range_y = range(track_len - 1, track_len * 2 - 2)
 
-    param_A_ub = np.zeros([(2 + inter_num) * (TRACK_LEN - 1), TRACK_LEN * 2 - 1])
-    param_b_ub = np.zeros([(2 + inter_num) * (TRACK_LEN - 1), 1])
-    dynamic_mat = np.zeros([TRACK_LEN - 1, TRACK_LEN - 1])
-    for c in range(TRACK_LEN - 1):
-        for r in range(c, TRACK_LEN - 1):
+    param_A_ub = np.zeros([(2 + inter_num) * (track_len - 1), track_len * 2 - 1])
+    param_b_ub = np.zeros([(2 + inter_num) * (track_len - 1), 1])
+    dynamic_mat = np.zeros([track_len - 1, track_len - 1])
+    for c in range(track_len - 1):
+        for r in range(c, track_len - 1):
             dynamic_mat[c, r] = (r - c + 1 - 0.5) * dt ** 2
 
     if interactive:
@@ -597,9 +600,9 @@ def get_ub_param(last_track_features, last_track_self, last_track_inter_collecti
     max_dev = 0.1  # free deviation
 
     # lane deviation is controlled by a single variable
-    param_A_ub[: TRACK_LEN * 2 - 2, TRACK_LEN * 2 - 2] = -1
+    param_A_ub[: track_len * 2 - 2, track_len * 2 - 2] = -1
 
-    for k in range(TRACK_LEN - 1):
+    for k in range(track_len - 1):
         "1. lane deviation avoidance"
         """
         |n(p_old)·(p_plan-tao(p_old))| <= lane_width/2 is equal to:
@@ -616,18 +619,18 @@ def get_ub_param(last_track_features, last_track_self, last_track_inter_collecti
                                          - np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
 
         # -n(p_old)·p_plan <= lane_width/2 - n(p_old)·tao(p_old)
-        param_A_ub[TRACK_LEN - 1 + k, range_x] += vec_n[k, 0] * dynamic_mat[:, k]
-        param_A_ub[TRACK_LEN - 1 + k, range_y] += vec_n[k, 1] * dynamic_mat[:, k]
-        param_b_ub[TRACK_LEN - 1 + k] = max_dev + np.dot(vec_n[k, :], tao[k, :]
+        param_A_ub[track_len - 1 + k, range_x] += vec_n[k, 0] * dynamic_mat[:, k]
+        param_A_ub[track_len - 1 + k, range_y] += vec_n[k, 1] * dynamic_mat[:, k]
+        param_b_ub[track_len - 1 + k] = max_dev + np.dot(vec_n[k, :], tao[k, :]
                                                          - np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
 
         "2. collision avoidance"
         for i, last_track_inter in enumerate(last_track_inter_collection):
             p_temp = (last_track_self[k, :] - last_track_inter[k, :]) \
                      / np.linalg.norm(last_track_self[k, :] - last_track_inter[k, :])
-            param_A_ub[(2 + i) * (TRACK_LEN - 1) + k, range_x] -= p_temp[0] * dynamic_mat[:, k]
-            param_A_ub[(2 + i) * (TRACK_LEN - 1) + k, range_y] -= p_temp[1] * dynamic_mat[:, k]
-            param_b_ub[(2 + i) * (TRACK_LEN - 1) + k] = - min_dis * (1 - k / (TRACK_LEN - 1) * aggre_factor) \
+            param_A_ub[(2 + i) * (track_len - 1) + k, range_x] -= p_temp[0] * dynamic_mat[:, k]
+            param_A_ub[(2 + i) * (track_len - 1) + k, range_y] -= p_temp[1] * dynamic_mat[:, k]
+            param_b_ub[(2 + i) * (track_len - 1) + k] = - min_dis * (1 - k / (track_len - 1) * aggre_factor) \
                                                 - np.dot(p_temp, last_track_inter[k, :]) \
                                                 + np.dot(p_temp, np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
 
