@@ -17,6 +17,7 @@ import xlsxwriter
 from viztracer import VizTracer
 import time
 from tqdm import tqdm
+from time import gmtime, strftime
 
 sigma = 0.02
 INTERACTION_DIS = 4
@@ -68,7 +69,7 @@ class Simulator:
         self.agent_gs.conl_type = self.scenario.conl_type[1]
         self.tag = case_tag
 
-    def interact(self, simu_step=30, iter_limit=10,
+    def interact(self, simu_step=30, iter_limit=30,
                  make_video=False,
                  break_when_finish=False,
                  interactive=True):
@@ -245,7 +246,8 @@ class Simulator:
                 ax.axis('scaled')
                 plt.show()
                 plt.pause(0.0001)
-                plt.savefig('../outputs/5_gt_interaction/figures/replay case 113/' + self.tag + '-' + str(t) + '.png', dpi=300)
+                plt.savefig('../outputs/5_gt_interaction/figures/replay case 113/' + self.tag + '-' + str(t) + '.png',
+                            dpi=300)
 
             if break_when_finish:
                 if self.agent_gs.observed_trajectory[-1, 0] < self.agent_lt.observed_trajectory[-1, 0] \
@@ -503,13 +505,17 @@ class Simulator:
         cv_gs, _ = get_central_vertices('gs_nds', origin_point=gs_origin_point)
 
         # set figures
-        fig, axes = plt.subplots(5, 5, figsize=[10, 10])
+        fig, axes = plt.subplots(6, 5, figsize=[12, 12])
 
         # ground truth trajectory
-        # lt track (observed in simulation and ground truth in nds)
         lt_ob_trj = self.lt_actual_trj
-        # gs track (observed in simulation and ground truth in nds)
         gs_ob_trj = self.gs_actual_trj
+        axes[0, 2].plot(lt_ob_trj[:, 0], lt_ob_trj[:, 1], 'b-', linewidth=2)
+        axes[0, 2].plot(gs_ob_trj[:, 0], gs_ob_trj[:, 1], 'r-', linewidth=2)
+        axes[0, 2].set(aspect=1, xlim=(-7.2, 24), ylim=(0, 32))
+        img = plt.imread('background_pic/Jianhexianxia-v2.png')
+        axes[0, 2].imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
+
         trj_package = trj_coll[t]
         for task_id in range(len(trj_package) - 1):
             # lt track (observed in simulation and ground truth in nds)
@@ -520,8 +526,14 @@ class Simulator:
             gs_plan = trj_package['task' + str(task_id)]['gs-self']
             gs_inter_plan = trj_package['task' + str(task_id)]['gs-inter']
 
-            axe = axes[int(task_id / 5), task_id % 5 - 1]
-            # axe.set(aspect=1, xlim=(-22 - 13, 53 - 13), ylim=(-31 - 7.8, 57 - 7.8))
+            axe_col = int(task_id / 5) + 1
+            axe_row = int(task_id % 5)
+            axe = axes[axe_col, axe_row]
+
+            #  set ipv of LT vehicle
+            case_ipv = trj_package['task' + str(task_id)]['ipv']
+            axe.set_title('ipv-lt: ' + str(case_ipv[0]) + 'gs: ' + str(case_ipv[1]))
+
             axe.set(aspect=1, xlim=(-7.2, 24), ylim=(0, 32))
             img = plt.imread('background_pic/Jianhexianxia-v2.png')
             axe.imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
@@ -533,10 +545,11 @@ class Simulator:
             # ----full tracks at each time step
             axe.scatter(lt_plan[:, 0], lt_plan[:, 1], color='blue', alpha=0.5, s=3)
             axe.scatter(gs_plan[:, 0], gs_plan[:, 1], color='red', alpha=0.5, s=3)
-            if self.agent_gs.conl_type in {'gt', 'linear-gt'}:
-                axe.scatter(gs_inter_plan[:, 0], gs_inter_plan[:, 1], color='red', alpha=0.2, s=3)
-            if self.agent_lt.conl_type in {'gt', 'linear-gt'}:
-                axe.scatter(lt_inter_plan[:, 0], lt_inter_plan[:, 1], color='blue', alpha=0.2, s=3)
+
+            # if self.agent_gs.conl_type in {'gt', 'linear-gt'}:
+            #     axe.scatter(gs_inter_plan[:, 0], gs_inter_plan[:, 1], color='gray', alpha=0.5, s=3)
+            # if self.agent_lt.conl_type in {'gt', 'linear-gt'}:
+            #     axe.scatter(lt_inter_plan[:, 0], lt_inter_plan[:, 1], color='gray', alpha=0.5, s=3)
         plt.tight_layout()
         plt.show()
         # # solution at this single time point
@@ -1061,7 +1074,7 @@ class Simulator:
         ipv_gs_coll = []
         for lt_ipv in {-2, -1, -0.5, 0, 0.5, 1, 2}:
             for gs_ipv in {-2, -1, -0.5, 0, 0.5, 1, 2}:
-                if 3 > lt_ipv+gs_ipv >= -0.5:
+                if 3 > lt_ipv + gs_ipv >= -0.5:
                     ipv_lt_coll.append(lt_ipv)
                     ipv_gs_coll.append(gs_ipv)
 
@@ -1169,10 +1182,13 @@ class Simulator:
             # ipv_gs.append(np.dot(likeness, ipv_gs_coll))
 
             "actual interaction strength indicated by plan deviation"
-            strength_lt.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1)))
-            strength_gs.append(np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
-            strength_overall.append(np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1))
-                                    + np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
+            strength_lt.append(
+                np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1)))
+            strength_gs.append(
+                np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
+            strength_overall.append(
+                np.mean(np.linalg.norm(self_opt_lt[compare_range, :] - nds_trj_lt[compare_range, :], axis=1))
+                + np.mean(np.linalg.norm(self_opt_gs[compare_range, :] - nds_trj_gs[compare_range, :], axis=1)))
 
             "simulated interaction strength of single agent"
             ave_strength_lt.append(np.mean(self_plan_dev_lt))
@@ -1226,8 +1242,8 @@ class Simulator:
             sensi_r2u_simu_min_gs.append(min(sensi_r2u_gs))
 
             # ipv that minimize the overall interaction strength
-            min_sensi_id_lt = np.where(sensi_r2u_lt==min(sensi_r2u_lt))
-            min_sensi_id_gs = np.where(sensi_r2u_gs==min(sensi_r2u_gs))
+            min_sensi_id_lt = np.where(sensi_r2u_lt == min(sensi_r2u_lt))
+            min_sensi_id_gs = np.where(sensi_r2u_gs == min(sensi_r2u_gs))
             min_sensitivity_ipv_lt.append(ipv_lt_coll[min_sensi_id_lt[0][0]] * math.pi / 8)
             min_sensitivity_ipv_gs.append(ipv_gs_coll[min_sensi_id_gs[0][0]] * math.pi / 8)
 
@@ -1238,8 +1254,10 @@ class Simulator:
                             strength_overall[i],
                             min_overall_strength_lt[i], ave_overall_strength_lt[i], std_overall_strength_lt[i],
                             min_overall_strength_gs[i], ave_overall_strength_gs[i], std_overall_strength_gs[i],
-                            min_overall_strength_ipv_lt[i], min_self_strength_ipv_lt[i], ipv_estimation_collection[i][0],
-                            min_overall_strength_ipv_gs[i], min_self_strength_ipv_gs[i], ipv_estimation_collection[i][1],
+                            min_overall_strength_ipv_lt[i], min_self_strength_ipv_lt[i],
+                            ipv_estimation_collection[i][0],
+                            min_overall_strength_ipv_gs[i], min_self_strength_ipv_gs[i],
+                            ipv_estimation_collection[i][1],
                             ave_semantic_res[i], semantic_res_std[i],
                             sensi_r2u_actual[i], sensi_r2u_simu_ave_lt[i], sensi_r2u_simu_min_lt[i],
                             sensi_r2u_simu_ave_gs[i], sensi_r2u_simu_min_gs[i],
@@ -1366,11 +1384,11 @@ def get_semantic_result(track_1, track_2, case_type='simu_left_turn'):
     return semantic_result
 
 
-def run_interaction(case_id, task_id, t, lt_ipv, gs_ipv, returns):
+def run_interaction(case_id, task_id, t, lt_ipv, gs_ipv, returns, con_type='linear-gt'):
     simu = Simulator(case_id=case_id)
     simu.sim_type = 'nds'
-    controller_type_lt = 'gt'
-    controller_type_gs = 'gt'
+    controller_type_lt = con_type
+    controller_type_gs = con_type
     simu.read_nds_scenario(controller_type_lt, controller_type_gs)
 
     simu.simu_time = t
@@ -1398,7 +1416,8 @@ def run_interaction(case_id, task_id, t, lt_ipv, gs_ipv, returns):
     returns['task' + str(task_id)] = {'lt-self': simu.agent_lt.trj_solution[:, 0:2],
                                       'lt-inter': simu.agent_lt.estimated_inter_agent[0].trj_solution[:, 0:2],
                                       'gs-self': simu.agent_gs.trj_solution[:, 0:2],
-                                      'gs-inter': simu.agent_gs.estimated_inter_agent[0].trj_solution[:, 0:2]}
+                                      'gs-inter': simu.agent_gs.estimated_inter_agent[0].trj_solution[:, 0:2],
+                                      'ipv': [lt_ipv, gs_ipv]}
 
     return returns
 
@@ -1566,7 +1585,8 @@ def main_simulate_ramp_merge():
             simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory,
                                                        simu.agent_gs.observed_trajectory, simu.sim_type)
 
-            simu.visualize_final_results(file_path='../outputs/5_gt_interaction/figures/')  # print final trajectory at given path
+            simu.visualize_final_results(
+                file_path='../outputs/5_gt_interaction/figures/')  # print final trajectory at given path
 
             # simu.save_test_meta(param_v=param_v, ipv=bg_ipv,
             #                     file_name='outputs/test_meta_data-' + role_under_test + '.xlsx',
@@ -1649,9 +1669,10 @@ def main_simulate_nds():
                 num_failed += 1
 
 
-def main_analyze_interaction():
+def main_analyze_interaction_strength_v1():
     """
     main for analyzing interaction strength and convergence in nds cases where LT car interact with a single GS car
+    Note: in this version, we solve game at each time step and calculate info with data in a fixed future horizon
     """
 
     bg_type = 'gt'
@@ -1690,7 +1711,7 @@ def main_analyze_interaction():
             ipv_estimation_collection = []
 
             for t in range(simu.case_len - 10):
-            # for t in range(1):
+                # for t in range(1):
 
                 proc_bar.set_postfix({"processing": f"{t}"})
                 simu.simu_time = t
@@ -1729,9 +1750,9 @@ def main_analyze_interaction():
                     task_id = 0
                     for lt_ipv in {-2, -1, -0.5, 0, 0.5, 1, 2}:
                         for gs_ipv in {-2, -1, -0.5, 0, 0.5, 1, 2}:
-                            if 3 > lt_ipv+gs_ipv >= -0.5:
+                            if 3 > lt_ipv + gs_ipv >= -0.5:
                                 task = Process(target=run_interaction,
-                                               args=(case_id, task_id, t, lt_ipv, gs_ipv, traj_coll_temp))
+                                               args=(case_id, task_id, t, lt_ipv, gs_ipv, traj_coll_temp, bg_type))
                                 task.start()
                                 tasks.append(task)
                                 task_id += 1
@@ -1754,13 +1775,18 @@ def main_analyze_interaction():
                                 draw=False)
 
 
-def main_analyze_multi_interaction():
+def main_analyze_multi_interaction_strength_v1():
     """
     main for analyzing interaction strength and convergence in a case where LT vehicle interact with several GS vehicles
     """
 
     bg_type = 'linear-gt'
     num_failed = 0
+    file_name = '../outputs/5_gt_interaction/outputs/conv_meta_data20230112.xlsx'
+    if not os.path.exists(file_name):
+        workbook = xlsxwriter.Workbook(file_name)
+        workbook.add_worksheet()
+        workbook.close()
 
     # for case_id in range(0, 51):
     for case_id in {51}:
@@ -1831,7 +1857,86 @@ def main_analyze_multi_interaction():
                                                          'gs': simu.agent_gs.trj_solution[:, 0:2]}
 
                 trajectory_collection.append(traj_coll_temp)
-            simu.save_conv_meta(trajectory_collection, file_name='outputs/conv_meta_data-case51.xlsx')
+            simu.save_conv_meta(trajectory_collection, file_name=file_name)
+
+
+def main_analyze_interaction_strength_v2():
+    bg_type = 'linear-gt'
+    num_failed = 0
+    file_name = '../outputs/5_gt_interaction/outputs/conv_meta_data' + strftime("%Y-%m-%d", gmtime()) + '.xlsx'
+    if not os.path.exists(file_name):
+        workbook = xlsxwriter.Workbook(file_name)
+        workbook.add_worksheet()
+        workbook.close()
+
+    # proc_bar = tqdm(range(0, 130))
+    proc_bar = tqdm({51})
+    for case_id in proc_bar:
+
+        if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
+            num_failed += 1
+            continue
+        elif case_id in {12, 13, 24, 26, 28, 31, 32, 33, 37, 38, 46, 47, 48, 52, 56, 59, 65, 66, 69, 77, 82, 83, 84, 90,
+                         91, 92, 94, 96, 97, 98, 100}:  # no path-crossing event
+            num_failed += 1
+            continue
+        elif case_id in {7, 23, 53, 54, 55, 79, 112, 114, 115, 116, 129}:  # influenced by non-moter road users
+            num_failed += 1
+            continue
+        else:
+
+            simu = Simulator(case_id=case_id)
+            simu.sim_type = 'nds'
+            controller_type_lt = bg_type
+            controller_type_gs = bg_type
+            simu.read_nds_scenario(controller_type_lt, controller_type_gs)
+
+            trajectory_collection = []
+
+            # proc_bar.set_postfix({"processing": f"{t}"})
+            tag = 'inter-strength-analysis-case' + str(case_id)
+            simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
+
+            simu.initialize(simu_scenario, tag)
+
+            simu.agent_gs.target = 'gs_nds'
+            simu.agent_gs.estimated_inter_agent[0].target = 'lt_nds'
+            simu.agent_lt.target = 'lt_nds'
+            simu.agent_lt.estimated_inter_agent[0].target = 'gs_nds'
+
+            # worker pairs for generating trajectory under different ipv combinations
+            tasks = []
+            manager = Manager()
+            traj_coll_temp = manager.dict()
+            task_id = 0
+            ipv_list = [-0.5, 0, 1, 1.5, 2]
+            for lt_ipv in ipv_list:
+                for gs_ipv in ipv_list:
+                    # for lt_ipv in {1}:
+                    #     for gs_ipv in {1}:
+                    #         if 3 > lt_ipv + gs_ipv >= -0.5:
+                    task = Process(target=run_interaction,
+                                   args=(case_id, task_id, 0, lt_ipv, gs_ipv, traj_coll_temp, bg_type))
+                    task.start()
+                    tasks.append(task)
+                    task_id += 1
+
+            for task in tasks:
+                task.join()
+
+            # generate selfish plan
+            simu.interact(simu_step=1, interactive=False)
+            simu.tag += '-self-opt'
+            # simu.visualize_single_step(file_path='./figures/convergence analysis-' + str(case_id) + '/')
+            traj_coll_temp['non-interactive'] = {'lt': simu.agent_lt.trj_solution[:, 0:2],
+                                                 'gs': simu.agent_gs.trj_solution[:, 0:2]}
+
+            trajectory_collection.append(traj_coll_temp)
+            simu.visualize_multi_interaction(trajectory_collection, 0)
+
+        # simu.save_conv_meta(trajectory_collection, ipv_estimation_collection,
+        #                         file_name=file_name,
+        #                         draw=False)
 
 
 if __name__ == '__main__':
@@ -1844,7 +1949,9 @@ if __name__ == '__main__':
     'simulate with nds data from Jianhe-Xianxia intersection'
     # main_simulate_nds()
 
-    'solve game for scenario initialized by nds cases'
-    main_analyze_interaction()
+    'analyze interaction strength by solving game at each time step'
+    # main_analyze_interaction_strength_v1()
+    # main_analyze_multi_interaction_strength_v1()
 
-    # main_analyze_multi_interaction()
+    'analyze interaction strength by solving game only once at the beginning'
+    main_analyze_interaction_strength_v2()

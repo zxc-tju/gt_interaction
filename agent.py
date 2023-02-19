@@ -17,7 +17,7 @@ import time
 dt = 0.12
 TRACK_LEN = 30
 MAX_DELTA_UT = 1e-4
-MIN_DIS = 2
+MIN_DIS = 4
 
 # weights for calculate interior cost
 WEIGHT_DELAY = 0.3
