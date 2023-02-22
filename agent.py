@@ -15,9 +15,9 @@ import time
 
 # simulation setting
 dt = 0.12
-TRACK_LEN = 30
+TRACK_LEN = 40
 MAX_DELTA_UT = 1e-4
-MIN_DIS = 4
+MIN_DIS = 5
 
 # weights for calculate interior cost
 WEIGHT_DELAY = 0.3
@@ -27,8 +27,8 @@ weight_metric = weight_metric / weight_metric.sum()
 
 # weight of interior and group cost
 WEIGHT_INT = 1
-WEIGHT_GRP = 0.22
-# WEIGHT_GRP = 0.4
+# WEIGHT_GRP = 0.22
+WEIGHT_GRP = 0.4
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
@@ -771,10 +771,8 @@ def idm_model(para, vel_self, vel_rel, gap):
         sss = para[0] + akgs
 
     acc = para[2] * (1 - np.power((vel_self / para[4]), 4) - np.power((sss / gap), 2))
-    if acc > 5:
-        acc = 5
-    if acc < -5:
-        acc = -5
+    acc = max(acc, 5)
+    acc = min(acc, -5)
 
     return acc
 

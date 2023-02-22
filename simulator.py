@@ -18,8 +18,9 @@ from viztracer import VizTracer
 import time
 from tqdm import tqdm
 from time import gmtime, strftime
+import seaborn as sns
 
-sigma = 0.02
+sigma = 1.5
 INTERACTION_DIS = 4
 
 
@@ -496,7 +497,9 @@ class Simulator:
         # plt.savefig(file_path + self.tag + '-final.svg')
         # plt.close()
 
-    def visualize_multi_interaction(self, trj_coll, t):
+    def visualize_multi_interaction(self, trj_coll, t, file_dir='./'):
+
+        fig_num_sqrt = int(np.sqrt(len(trj_coll[0].values())))
 
         # central vertices
         lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
@@ -505,36 +508,49 @@ class Simulator:
         cv_gs, _ = get_central_vertices('gs_nds', origin_point=gs_origin_point)
 
         # set figures
-        fig, axes = plt.subplots(6, 5, figsize=[12, 12])
+        fig, axes = plt.subplots(fig_num_sqrt + 1, fig_num_sqrt, figsize=[12, 12])
 
         # ground truth trajectory
-        lt_ob_trj = self.lt_actual_trj
-        gs_ob_trj = self.gs_actual_trj
-        axes[0, 2].plot(lt_ob_trj[:, 0], lt_ob_trj[:, 1], 'b-', linewidth=2)
-        axes[0, 2].plot(gs_ob_trj[:, 0], gs_ob_trj[:, 1], 'r-', linewidth=2)
-        axes[0, 2].set(aspect=1, xlim=(-7.2, 24), ylim=(0, 32))
+        act_trj_lt = self.lt_actual_trj[:, 0:2]
+        act_trj_gs = self.gs_actual_trj[:, 0:2]
+        axes[0, 2].plot(act_trj_lt[:, 0], act_trj_lt[:, 1], 'b-', linewidth=2)
+        axes[0, 2].plot(act_trj_gs[:, 0], act_trj_gs[:, 1], 'r-', linewidth=2)
+        # axes[0, 2].set(aspect=1, xlim=(-7.2, 24), ylim=(0, 32))
+        axes[0, 2].set(aspect=1,
+                       xlim=(min(np.concatenate([act_trj_lt[:, 0], act_trj_gs[:, 0]]))-4,
+                             max(np.concatenate([act_trj_lt[:, 0], act_trj_gs[:, 0]]))+4),
+                       ylim=(min(np.concatenate([act_trj_lt[:, 1], act_trj_gs[:, 1]]))-4,
+                             max(np.concatenate([act_trj_lt[:, 1], act_trj_gs[:, 1]]))+4))
         img = plt.imread('background_pic/Jianhexianxia-v2.png')
         axes[0, 2].imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
 
-        trj_package = trj_coll[t]
-        for task_id in range(len(trj_package) - 1):
+        simu_trj_coll = trj_coll[t]
+        simu_opt_trj = simu_trj_coll['non-interactive']
+        compare_len = min(np.size(act_trj_lt, 0), np.size(simu_opt_trj['lt'], 0))
+        compare_range = range(compare_len)
+
+        for task_id in range(len(simu_trj_coll) - 1):
             # lt track (observed in simulation and ground truth in nds)
-            lt_plan = trj_package['task' + str(task_id)]['lt-self']
-            lt_inter_plan = trj_package['task' + str(task_id)]['lt-inter']
+            lt_plan = simu_trj_coll['task' + str(task_id)]['lt-self']
+            lt_inter_plan = simu_trj_coll['task' + str(task_id)]['lt-inter']
 
             # gs track (observed in simulation and ground truth in nds)
-            gs_plan = trj_package['task' + str(task_id)]['gs-self']
-            gs_inter_plan = trj_package['task' + str(task_id)]['gs-inter']
+            gs_plan = simu_trj_coll['task' + str(task_id)]['gs-self']
+            gs_inter_plan = simu_trj_coll['task' + str(task_id)]['gs-inter']
 
-            axe_col = int(task_id / 5) + 1
-            axe_row = int(task_id % 5)
+            axe_col = int(task_id / fig_num_sqrt) + 1
+            axe_row = int(task_id % fig_num_sqrt)
             axe = axes[axe_col, axe_row]
 
             #  set ipv of LT vehicle
-            case_ipv = trj_package['task' + str(task_id)]['ipv']
-            axe.set_title('ipv-lt: ' + str(case_ipv[0]) + 'gs: ' + str(case_ipv[1]))
+            case_ipv = simu_trj_coll['task' + str(task_id)]['ipv']
+            axe.set_title(str(task_id) + '-ipv-lt: ' + str(case_ipv[0]) + 'gs: ' + str(case_ipv[1]))
 
-            axe.set(aspect=1, xlim=(-7.2, 24), ylim=(0, 32))
+            axe.set(aspect=1,
+                    xlim=(min(np.concatenate([act_trj_lt[:, 0], act_trj_gs[:, 0]])) - 4,
+                          max(np.concatenate([act_trj_lt[:, 0], act_trj_gs[:, 0]])) + 4),
+                    ylim=(min(np.concatenate([act_trj_lt[:, 1], act_trj_gs[:, 1]])) - 4,
+                          max(np.concatenate([act_trj_lt[:, 1], act_trj_gs[:, 1]])) + 4))
             img = plt.imread('background_pic/Jianhexianxia-v2.png')
             axe.imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
 
@@ -543,8 +559,10 @@ class Simulator:
             axe.plot(cv_gs[:, 0], cv_gs[:, 1], 'r-', linewidth=0.1)
 
             # ----full tracks at each time step
-            axe.scatter(lt_plan[:, 0], lt_plan[:, 1], color='blue', alpha=0.5, s=3)
-            axe.scatter(gs_plan[:, 0], gs_plan[:, 1], color='red', alpha=0.5, s=3)
+            axe.scatter(lt_plan[compare_range, 0], lt_plan[compare_range, 1], color='blue', alpha=0.5, s=3)
+            axe.scatter(gs_plan[compare_range, 0], gs_plan[compare_range, 1], color='red', alpha=0.5, s=3)
+            axe.plot(act_trj_lt[compare_range, 0], act_trj_lt[compare_range, 1], 'gray', linewidth=2)
+            axe.plot(act_trj_gs[compare_range, 0], act_trj_gs[compare_range, 1], 'gray', linewidth=2)
 
             # if self.agent_gs.conl_type in {'gt', 'linear-gt'}:
             #     axe.scatter(gs_inter_plan[:, 0], gs_inter_plan[:, 1], color='gray', alpha=0.5, s=3)
@@ -569,8 +587,8 @@ class Simulator:
         # axes.plot(cv_lt[:, 0], cv_lt[:, 1], 'b-', linewidth=0.1)
         # axes.plot(cv_gs[:, 0], cv_gs[:, 1], 'r-', linewidth=0.1)
         #
-        # axes.scatter(lt_ob_trj[0, 0],
-        #              lt_ob_trj[0, 1],
+        # axes.scatter(act_trj_lt[0, 0],
+        #              act_trj_lt[0, 1],
         #              s=50,
         #              alpha=0.6,
         #              color='#0E76CF',
@@ -602,7 +620,7 @@ class Simulator:
         # axes.legend()
         # plt.savefig(file_path + self.tag, dpi=300)
         # # plt.savefig(file_path + self.tag + '-final.svg')
-        # # plt.close()
+        # plt.close()
 
     def read_nds_scenario(self, controller_type_lt, controller_type_gs, t=0):
         cross_id, data_cross, _ = analyze_ipv_in_nds(self.case_id)
@@ -786,6 +804,104 @@ class Simulator:
         #                  alpha=0.3,
         #                  color='red',
         #                  label='estimated gs IPV')
+
+    def cal_trj_similarity(self, trj_coll, isFig=True):
+
+        # Ground truth trajectory
+        act_trj_lt = self.lt_actual_trj[:, 0:2]
+        act_trj_gs = self.gs_actual_trj[:, 0:2]
+
+        # Simulated trajectory
+        simu_trj_coll = trj_coll[0]
+        simu_opt_trj = simu_trj_coll['non-interactive']
+        case_num_sqrt = int(np.sqrt(len(simu_trj_coll.values())))
+
+        compare_len = min(np.size(act_trj_lt, 0), np.size(simu_opt_trj['lt'], 0))
+        compare_range = range(compare_len)
+
+        " Calculate similarity between simulation and ground truth with MLE "
+        act_trj = np.concatenate((act_trj_lt[compare_range, :], act_trj_gs[compare_range, :]), axis=0)
+        similarity = np.zeros(len(simu_trj_coll) - 1)
+        for i in range(len(simu_trj_coll) - 1):
+            simu_track = np.concatenate((simu_trj_coll['task' + str(i)]['lt-self'][compare_range, :],
+                                         simu_trj_coll['task' + str(i)]['gs-self'][compare_range, :]), axis=0)
+            rel_dis = np.linalg.norm(simu_track - act_trj, axis=1)  # distance vector
+            # print('case', str(i))
+            # print('max dis:', max(rel_dis))
+            # print('ave dis:', np.mean(rel_dis))
+            # print('----')
+            sim_factor = np.exp(- rel_dis ** 2 / (2 * sigma ** 2))
+            similarity[i] = np.prod((1 / sigma / np.sqrt(2 * math.pi)) * sim_factor) ** (1 / np.size(act_trj, 0))
+
+            # Set similarity to 0 if it is negative
+            similarity[i] = max(similarity[i], 0)
+        similarity = similarity.reshape([case_num_sqrt, case_num_sqrt])
+
+        # visualize similarity matrix
+        if isFig:
+            _, axes = plt.subplots(1, 2, figsize=[20, 10])
+            axes[0].set_title('NDS similarity')
+            sns.heatmap(similarity, annot=True, cmap='Blues', ax=axes[0])
+            # plt.show()
+            return axes
+        return None
+
+    def cal_interaction_strength(self, trj_coll, ax=None, isFig=True, isSaveFig=False, file_dir='./'):
+
+        # Ground truth trajectory
+        act_trj_lt = self.lt_actual_trj[:, 0:2]
+        act_trj_gs = self.gs_actual_trj[:, 0:2]
+        interaction_distance = min(np.linalg.norm(act_trj_lt-act_trj_gs, axis=1)) - 1
+
+        # Simulated trajectory
+        simu_trj_coll = trj_coll[0]
+        simu_opt_trj = simu_trj_coll['non-interactive']
+        case_num_sqrt = int(np.sqrt(len(simu_trj_coll.values())))
+
+        compare_len = min(np.size(act_trj_lt, 0), np.size(simu_opt_trj['lt'], 0))
+        compare_range = range(compare_len)
+
+        dyna_mat = [2 * i + 1 for i in compare_range]
+        dyna_mat = np.array([dyna_mat, dyna_mat])
+        dyna_mat = dyna_mat.T
+
+        opt_trj = np.concatenate((simu_opt_trj['lt'][compare_range, :], simu_opt_trj['gs'][compare_range, :]), axis=0)
+        inter_strength = np.zeros(len(simu_trj_coll) - 1)
+
+        " Quantify interaction strength by compare simulated trajectory and optimal one "
+        # for i in range(len(simu_trj_coll) - 1):
+        #     simu_track = np.concatenate((simu_trj_coll['task' + str(i)]['lt-self'][compare_range, :],
+        #                                  simu_trj_coll['task' + str(i)]['gs-self'][compare_range, :]), axis=0)
+        #     rel_dis = np.linalg.norm(simu_track - opt_trj, axis=1)  # distance vector
+        #     # print('case', str(i))
+        #     # print('max dis:', max(rel_dis))
+        #     # print('ave dis:', np.mean(rel_dis))
+        #     # print('----')
+        #     sim_factor = np.exp(- rel_dis ** 2 / (2 * sigma ** 2))
+        #     inter_strength[i] = np.prod((1 / sigma / np.sqrt(2 * math.pi)) * sim_factor) ** (1 / np.size(opt_trj, 0))
+        #
+        #     # Set inter_strength to 0 if it is negative
+        #     inter_strength[i] = max(inter_strength[i], 0)
+
+        " Quantify interaction strength by sensitivity analysis "
+        for i in range(len(simu_trj_coll) - 1):
+            lt_plan = simu_trj_coll['task' + str(i)]['lt-self'][compare_range, :]
+            gs_plan = simu_trj_coll['task' + str(i)]['gs-self'][compare_range, :]
+            plan_vec_lt = np.array(lt_plan - gs_plan)
+            plan_dis_lt = np.linalg.norm(plan_vec_lt, axis=1)
+            plan_vec_lt[np.where(plan_dis_lt > interaction_distance), :] = 0
+            sensi_r2p = plan_vec_lt / np.linalg.norm(plan_dis_lt) * 0.5 * 0.12 ** 2
+            inter_strength[i] = np.sum(abs(dyna_mat * sensi_r2p))
+
+        inter_strength = inter_strength.reshape([case_num_sqrt, case_num_sqrt])
+
+        # visualize inter_strength matrix
+        if isFig:
+            ax.set_title('interaction strength')
+            sns.heatmap(inter_strength, annot=True, cmap='Reds', ax=ax)
+            if isSaveFig:
+                plt.savefig(file_dir + str(self.case_id), dpi=450)
+            # plt.show()
 
     def save_test_meta(self, param_v, ipv, file_name, sheet_name):
         """
@@ -1861,16 +1977,26 @@ def main_analyze_multi_interaction_strength_v1():
 
 
 def main_analyze_interaction_strength_v2():
+    """
+    simulate a full trajectory at the beginning frame of each real world case
+    compare simulation results and ground truth trajectory to find the most similar simulation case
+    check if the most similar one has relative low interaction strength
+    Returns
+    -------
+
+    """
     bg_type = 'linear-gt'
     num_failed = 0
-    file_name = '../outputs/5_gt_interaction/outputs/conv_meta_data' + strftime("%Y-%m-%d", gmtime()) + '.xlsx'
-    if not os.path.exists(file_name):
-        workbook = xlsxwriter.Workbook(file_name)
-        workbook.add_worksheet()
-        workbook.close()
+    dir_name = '../outputs/5_gt_interaction/inter_str_analysis_v2/'
+
+    # file_name = dir_name + 'inter_str_meta' + strftime("%Y-%m-%d", gmtime()) + '.xlsx'
+    # if not os.path.exists(file_name):
+    #     workbook = xlsxwriter.Workbook(file_name)
+    #     workbook.add_worksheet()
+    #     workbook.close()
 
     # proc_bar = tqdm(range(0, 130))
-    proc_bar = tqdm({51})
+    proc_bar = tqdm({1})
     for case_id in proc_bar:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
@@ -1880,7 +2006,7 @@ def main_analyze_interaction_strength_v2():
                          91, 92, 94, 96, 97, 98, 100}:  # no path-crossing event
             num_failed += 1
             continue
-        elif case_id in {7, 23, 53, 54, 55, 79, 112, 114, 115, 116, 129}:  # influenced by non-moter road users
+        elif case_id in {7, 23, 53, 54, 55, 79, 112, 114, 115, 116, 129}:  # influenced by non-motor road users
             num_failed += 1
             continue
         else:
@@ -1909,7 +2035,7 @@ def main_analyze_interaction_strength_v2():
             manager = Manager()
             traj_coll_temp = manager.dict()
             task_id = 0
-            ipv_list = [-0.5, 0, 1, 1.5, 2]
+            ipv_list = [-0.5, 0, 0.5, 1, 1.5, 2.5, 3]
             for lt_ipv in ipv_list:
                 for gs_ipv in ipv_list:
                     # for lt_ipv in {1}:
@@ -1932,7 +2058,12 @@ def main_analyze_interaction_strength_v2():
                                                  'gs': simu.agent_gs.trj_solution[:, 0:2]}
 
             trajectory_collection.append(traj_coll_temp)
-            simu.visualize_multi_interaction(trajectory_collection, 0)
+            axes = simu.cal_trj_similarity(trajectory_collection)
+            simu.cal_interaction_strength(trajectory_collection, ax=axes[1],
+                                          file_dir=dir_name,
+                                          isFig=True,
+                                          isSaveFig=True)
+            # simu.visualize_multi_interaction(trajectory_collection, 0)
 
         # simu.save_conv_meta(trajectory_collection, ipv_estimation_collection,
         #                         file_name=file_name,
