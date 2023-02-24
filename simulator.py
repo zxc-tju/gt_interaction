@@ -56,6 +56,7 @@ class Simulator:
         self.ending_point = None
         self.gs_actual_trj = []
         self.lt_actual_trj = []
+        self.ipv_list = []
 
     def initialize(self, scenario, case_tag):
         self.scenario = scenario
@@ -497,7 +498,7 @@ class Simulator:
         # plt.savefig(file_path + self.tag + '-final.svg')
         # plt.close()
 
-    def visualize_multi_interaction(self, trj_coll, t, file_dir='./'):
+    def visualize_multi_interaction(self, trj_coll, t, file_path='./'):
 
         fig_num_sqrt = int(np.sqrt(len(trj_coll[0].values())))
 
@@ -517,10 +518,10 @@ class Simulator:
         axes[0, 2].plot(act_trj_gs[:, 0], act_trj_gs[:, 1], 'r-', linewidth=2)
         # axes[0, 2].set(aspect=1, xlim=(-7.2, 24), ylim=(0, 32))
         axes[0, 2].set(aspect=1,
-                       xlim=(min(np.concatenate([act_trj_lt[:, 0], act_trj_gs[:, 0]]))-4,
-                             max(np.concatenate([act_trj_lt[:, 0], act_trj_gs[:, 0]]))+4),
-                       ylim=(min(np.concatenate([act_trj_lt[:, 1], act_trj_gs[:, 1]]))-4,
-                             max(np.concatenate([act_trj_lt[:, 1], act_trj_gs[:, 1]]))+4))
+                       xlim=(min(np.concatenate([act_trj_lt[:, 0], act_trj_gs[:, 0]])) - 4,
+                             max(np.concatenate([act_trj_lt[:, 0], act_trj_gs[:, 0]])) + 4),
+                       ylim=(min(np.concatenate([act_trj_lt[:, 1], act_trj_gs[:, 1]])) - 4,
+                             max(np.concatenate([act_trj_lt[:, 1], act_trj_gs[:, 1]])) + 4))
         img = plt.imread('background_pic/Jianhexianxia-v2.png')
         axes[0, 2].imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
 
@@ -835,6 +836,12 @@ class Simulator:
 
             # Set similarity to 0 if it is negative
             similarity[i] = max(similarity[i], 0)
+        similarity = similarity / sum(similarity)
+        mean_ipv_lt = 0
+        mean_ipv_gs = 0
+        for i in range(len(simu_trj_coll) - 1):
+            mean_ipv_lt += simu_trj_coll['task' + str(i)]['ipv'][0] * similarity[i]
+            mean_ipv_gs += simu_trj_coll['task' + str(i)]['ipv'][1] * similarity[i]
         similarity = similarity.reshape([case_num_sqrt, case_num_sqrt])
 
         # visualize similarity matrix
@@ -843,7 +850,7 @@ class Simulator:
             axes[0].set_title('NDS similarity')
             sns.heatmap(similarity, annot=True, cmap='Blues', ax=axes[0])
             # plt.show()
-            return axes
+            return axes, [mean_ipv_lt, mean_ipv_gs]
         return None
 
     def cal_interaction_strength(self, trj_coll, ax=None, isFig=True, isSaveFig=False, file_dir='./'):
@@ -851,7 +858,7 @@ class Simulator:
         # Ground truth trajectory
         act_trj_lt = self.lt_actual_trj[:, 0:2]
         act_trj_gs = self.gs_actual_trj[:, 0:2]
-        interaction_distance = min(np.linalg.norm(act_trj_lt-act_trj_gs, axis=1)) - 1
+        interaction_distance = min(np.linalg.norm(act_trj_lt - act_trj_gs, axis=1)) - 1
 
         # Simulated trajectory
         simu_trj_coll = trj_coll[0]
@@ -900,8 +907,60 @@ class Simulator:
             ax.set_title('interaction strength')
             sns.heatmap(inter_strength, annot=True, cmap='Reds', ax=ax)
             if isSaveFig:
-                plt.savefig(file_dir + str(self.case_id), dpi=450)
+                plt.savefig(file_dir + 'figure/' + str(self.case_id), dpi=450)
+                plt.close()
             # plt.show()
+        return inter_strength
+
+    def min_inter_strength_test(self, estimated_ipv, inter_str_matrix, isSave=False, file_name=None):
+        """
+        check whether the min-interaction-strength case is the most human-like one
+        Returns
+        -------
+
+        """
+
+        # find the most likely case according to mean ipv
+        lt_id = None
+        gs_id = None
+        for i in range(len(self.ipv_list) - 1):
+            if self.ipv_list[i] < estimated_ipv[0] < self.ipv_list[i + 1]:
+                lt_id = i
+            if self.ipv_list[i] < estimated_ipv[1] < self.ipv_list[i + 1]:
+                gs_id = i
+
+        actual_inter_str = inter_str_matrix[lt_id, gs_id]
+        min_inter_str = inter_str_matrix.min()
+        mean_inter_str = np.mean(inter_str_matrix)
+        std_inter_str = np.std(inter_str_matrix)
+        print('actual interaction strength: ', actual_inter_str)
+        print('minimal interaction strength: ', min_inter_str)
+        print('mean interaction strength: ', mean_inter_str)
+        print('std interaction strength: ', std_inter_str)
+
+        if isSave:
+            "---- sava data ----"
+            # prepare data
+            df = pd.DataFrame([[self.case_id,
+                                actual_inter_str, min_inter_str,
+                                mean_inter_str, std_inter_str,
+                                ], ],
+                              columns=['case id',
+                                       'actual interaction strength', 'minimal interaction strength',
+                                       'mean interaction strength', 'std interaction strength',
+                                       ])
+
+            # write data
+            if self.case_id == 0:
+                header_flag = True
+                start_row = 0
+            else:
+                header_flag = False
+                start_row = self.case_id + 1
+
+            with pd.ExcelWriter(file_name, mode='a', if_sheet_exists="overlay", engine="openpyxl") as writer:
+                df.to_excel(writer, header=header_flag, index=False,
+                            startcol=0, startrow=start_row)
 
     def save_test_meta(self, param_v, ipv, file_name, sheet_name):
         """
@@ -1989,14 +2048,14 @@ def main_analyze_interaction_strength_v2():
     num_failed = 0
     dir_name = '../outputs/5_gt_interaction/inter_str_analysis_v2/'
 
-    # file_name = dir_name + 'inter_str_meta' + strftime("%Y-%m-%d", gmtime()) + '.xlsx'
-    # if not os.path.exists(file_name):
-    #     workbook = xlsxwriter.Workbook(file_name)
-    #     workbook.add_worksheet()
-    #     workbook.close()
+    file_name = dir_name + 'inter_str_meta' + strftime("%Y-%m-%d", gmtime()) + '.xlsx'
+    if not os.path.exists(file_name):
+        workbook = xlsxwriter.Workbook(file_name)
+        workbook.add_worksheet()
+        workbook.close()
 
-    # proc_bar = tqdm(range(0, 130))
-    proc_bar = tqdm({1})
+    proc_bar = tqdm(range(0, 130))
+    # proc_bar = tqdm({1})
     for case_id in proc_bar:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
@@ -2035,9 +2094,9 @@ def main_analyze_interaction_strength_v2():
             manager = Manager()
             traj_coll_temp = manager.dict()
             task_id = 0
-            ipv_list = [-0.5, 0, 0.5, 1, 1.5, 2.5, 3]
-            for lt_ipv in ipv_list:
-                for gs_ipv in ipv_list:
+            simu.ipv_list = [-0.5, 0, 0.5, 1, 1.5, 2.5, 3]
+            for lt_ipv in simu.ipv_list:
+                for gs_ipv in simu.ipv_list:
                     # for lt_ipv in {1}:
                     #     for gs_ipv in {1}:
                     #         if 3 > lt_ipv + gs_ipv >= -0.5:
@@ -2058,11 +2117,12 @@ def main_analyze_interaction_strength_v2():
                                                  'gs': simu.agent_gs.trj_solution[:, 0:2]}
 
             trajectory_collection.append(traj_coll_temp)
-            axes = simu.cal_trj_similarity(trajectory_collection)
-            simu.cal_interaction_strength(trajectory_collection, ax=axes[1],
-                                          file_dir=dir_name,
-                                          isFig=True,
-                                          isSaveFig=True)
+            axes, estimated_ipv = simu.cal_trj_similarity(trajectory_collection)
+            inter_strength_matrix = simu.cal_interaction_strength(trajectory_collection, ax=axes[1],
+                                                                  file_dir=dir_name,
+                                                                  isFig=False,
+                                                                  isSaveFig=False)
+            simu.min_inter_strength_test(estimated_ipv, inter_strength_matrix, isSave=True, file_name=file_name)
             # simu.visualize_multi_interaction(trajectory_collection, 0)
 
         # simu.save_conv_meta(trajectory_collection, ipv_estimation_collection,
