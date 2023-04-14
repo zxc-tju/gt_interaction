@@ -14,11 +14,11 @@ from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
 from NDS_analysis import analyze_ipv_in_nds, cal_pet
 import xlsxwriter
-from viztracer import VizTracer
 import time
 from tqdm import tqdm
 from time import gmtime, strftime
 import seaborn as sns
+from openpyxl import load_workbook
 
 sigma = 1.5
 INTERACTION_DIS = 4
@@ -74,12 +74,15 @@ class Simulator:
     def interact(self, simu_step=30, iter_limit=30,
                  make_video=False,
                  break_when_finish=False,
-                 interactive=True):
+                 interactive=True,
+                 file_path='/'
+                 ):
         """
         Simulate the given scenario step by step
 
         Parameters
         ----------
+        file_path
         interactive
         iter_limit: max iteration number
         make_video
@@ -105,14 +108,16 @@ class Simulator:
                 # time2 = time.perf_counter()
                 # print('time consumption: ', time2 - time1)
 
-            elif self.agent_lt.conl_type in {'gt'}:
+            elif self.agent_lt.conl_type in {'gt', 'opt'}:
 
                 # ==interaction with parallel virtual agents
                 # self.agent_lt.ibr_interact_with_virtual_agents(self.agent_gs)
                 # self.agent_lt.ibr_interact_with_virtual_agents_parallel(self.agent_gs)
-
+                iter_limit_lt = iter_limit
+                if self.agent_lt.conl_type == 'opt':
+                    iter_limit_lt = 0
                 # ==interaction with estimated agent
-                self.agent_lt.ibr_interact(iter_limit=iter_limit)
+                self.agent_lt.ibr_interact(iter_limit=iter_limit_lt)
 
             elif self.agent_lt.conl_type in {'idm'}:
                 self.agent_lt.idm_plan(self.agent_gs)
@@ -155,13 +160,16 @@ class Simulator:
             if self.agent_gs.conl_type in {'linear-gt'}:
                 self.agent_gs.lp_ibr_interact(iter_limit=iter_limit, interactive=interactive)
 
-            elif self.agent_gs.conl_type in {'gt'}:
+            elif self.agent_gs.conl_type in {'gt', 'opt'}:
                 # ==interaction with parallel virtual agents
                 # self.agent_gs.ibr_interact_with_virtual_agents(self.agent_lt, iter_limit)
                 # self.agent_gs.ibr_interact_with_virtual_agents_parallel(self.agent_lt, iter_limit)
 
+                iter_limit_gs = iter_limit
+                if self.agent_gs.conl_type == 'opt':
+                    iter_limit_gs = 0
                 # ==interaction with estimated agent
-                self.agent_gs.ibr_interact(iter_limit)
+                self.agent_gs.ibr_interact(iter_limit=iter_limit_gs)
 
             elif self.agent_gs.conl_type in {'idm'}:
                 self.agent_gs.idm_plan(self.agent_lt)
@@ -248,7 +256,7 @@ class Simulator:
                 ax.axis('scaled')
                 plt.show()
                 plt.pause(0.0001)
-                plt.savefig('../outputs/5_gt_interaction/figures/replay case 113/' + self.tag + '-' + str(t) + '.png',
+                plt.savefig(file_path + self.tag + '-' + str(t) + '.png',
                             dpi=300)
 
             if break_when_finish:
@@ -318,48 +326,48 @@ class Simulator:
 
         # ----position at each time step
         # version 1
-        for t in range(num_frame):
-            # simulation results
-            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
-                           para_alpha=0.3, para_color='#0E76CF')
-            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
-                           para_alpha=0.3, para_color='#7030A0')
-            #
-            # nds ground truth
-            if self.sim_type == 'nds':
-                draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
-                               para_alpha=0.3, para_color='blue')
-
-                draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
-                               para_alpha=0.3, para_color='red')
+        # for t in range(num_frame):
+        #     # simulation results
+        #     draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
+        #                    para_alpha=0.3, para_color='#0E76CF')
+        #     draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
+        #                    para_alpha=0.3, para_color='#7030A0')
+        #     #
+        #     # nds ground truth
+        #     if self.sim_type == 'nds':
+        #         draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
+        #                        para_alpha=0.3, para_color='blue')
+        #
+        #         draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
+        #                        para_alpha=0.3, para_color='red')
 
         # version 2
-        # axes[0].scatter(lt_ob_trj[:num_frame, 0],
-        #                 lt_ob_trj[:num_frame, 1],
-        #                 s=50,
-        #                 alpha=0.6,
-        #                 color='#0E76CF',
-        #                 label='left-turn simulation')
-        # axes[0].scatter(gs_ob_trj[:num_frame, 0],
-        #                 gs_ob_trj[:num_frame, 1],
-        #                 s=50,
-        #                 alpha=0.6,
-        #                 color='#7030A0',
-        #                 label='go-straight simulation')
+        axes[0].scatter(lt_ob_trj[:num_frame, 0],
+                        lt_ob_trj[:num_frame, 1],
+                        s=50,
+                        alpha=0.6,
+                        color='#0E76CF',
+                        label='left-turn simulation')
+        axes[0].scatter(gs_ob_trj[:num_frame, 0],
+                        gs_ob_trj[:num_frame, 1],
+                        s=50,
+                        alpha=0.6,
+                        color='#7030A0',
+                        label='go-straight simulation')
 
-        # if self.sim_type == 'nds':
-        #     axes[0].scatter(lt_nds_trj[:num_frame, 0],
-        #                     lt_nds_trj[:num_frame, 1],
-        #                     s=50,
-        #                     alpha=0.3,
-        #                     color='blue',
-        #                     label='left-turn NDS')
-        #     axes[0].scatter(gs_nds_trj[:num_frame, 0],
-        #                     gs_nds_trj[:num_frame, 1],
-        #                     s=50,
-        #                     alpha=0.3,
-        #                     color='red',
-        #                     label='go-straight NDS')
+        if self.sim_type == 'nds':
+            axes[0].scatter(lt_nds_trj[:num_frame, 0],
+                            lt_nds_trj[:num_frame, 1],
+                            s=50,
+                            alpha=0.3,
+                            color='blue',
+                            label='left-turn NDS')
+            axes[0].scatter(gs_nds_trj[:num_frame, 0],
+                            gs_nds_trj[:num_frame, 1],
+                            s=50,
+                            alpha=0.3,
+                            color='red',
+                            label='go-straight NDS')
 
         # ----full tracks at each time step
         # for t in range(self.num_step):
@@ -396,13 +404,13 @@ class Simulator:
             axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range_nds],
                          color='blue', label='left-turn NDS')
 
-        # axes[1].legend()
-        # axes[0].legend()
+        axes[1].legend()
+        axes[0].legend()
         # axes[0].axis('equal')
         plt.show()
         plt.savefig(file_path + self.tag + '-final.png', dpi=600)
         # plt.savefig(file_path + self.tag + '-final.svg')
-        # plt.close()
+        plt.close()
 
     def visualize_single_step(self, file_path):
 
@@ -666,7 +674,7 @@ class Simulator:
             self.gs_actual_trj[:, 0] = self.gs_actual_trj[:, 0] - 13
             self.gs_actual_trj[:, 1] = self.gs_actual_trj[:, 1] - 7.8
 
-            self.case_len = np.size(data_cross, 0)
+            self.case_len = np.size(data_cross, 0) - 1
 
             return Scenario([init_position_lt, init_position_gs],
                             [init_velocity_lt, init_velocity_gs],
@@ -806,7 +814,7 @@ class Simulator:
         #                  color='red',
         #                  label='estimated gs IPV')
 
-    def cal_trj_similarity(self, trj_coll, isFig=True):
+    def cal_trj_similarity(self, trj_coll, isFig=False):
 
         # Ground truth trajectory
         act_trj_lt = self.lt_actual_trj[:, 0:2]
@@ -851,7 +859,7 @@ class Simulator:
             sns.heatmap(similarity, annot=True, cmap='Blues', ax=axes[0])
             # plt.show()
             return axes, [mean_ipv_lt, mean_ipv_gs]
-        return None
+        return None, [mean_ipv_lt, mean_ipv_gs]
 
     def cal_interaction_strength(self, trj_coll, ax=None, isFig=True, isSaveFig=False, file_dir='./'):
 
@@ -904,8 +912,8 @@ class Simulator:
 
         # visualize inter_strength matrix
         if isFig:
-            ax.set_title('interaction strength')
-            sns.heatmap(inter_strength, annot=True, cmap='Reds', ax=ax)
+            ax[1].set_title('interaction strength')
+            sns.heatmap(inter_strength, annot=True, cmap='Reds', ax=ax[1])
             if isSaveFig:
                 plt.savefig(file_dir + 'figure/' + str(self.case_id), dpi=450)
                 plt.close()
@@ -1042,7 +1050,7 @@ class Simulator:
                         sheet_name=sheet_name,
                         startcol=0, startrow=start_row)
 
-    def save_event_meta(self, num_failed, file_name, sheet_name):
+    def save_simu_meta(self, num_failed, file_name, sheet_name):
         """
 
         Returns
@@ -1194,6 +1202,82 @@ class Simulator:
             df.to_excel(writer, header=header_flag, index=False,
                         sheet_name=sheet_name,
                         startcol=0, startrow=start_row - num_failed)
+
+    def save_simu_details(self, num_failed, file_name):
+        """
+
+        Returns
+        -------
+
+        """
+
+        "---- event data abstraction ----"
+        case_id = self.case_id
+
+        # lt track (observed in simulation and ground truth in nds)
+        simu_trj_lt = self.agent_lt.observed_trajectory[:, 0:2]
+        nds_trj_lt = np.array(self.lt_actual_trj[:, 0:2])
+        vel_ob_vel_norm_lt = np.linalg.norm(self.agent_lt.observed_trajectory[:, 2:4], axis=1)
+        vel_nds_vel_norm_lt = np.linalg.norm(self.lt_actual_trj[:, 2:4], axis=1)
+
+        # gs track (observed in simulation and ground truth in nds)
+        simu_trj_gs = self.agent_gs.observed_trajectory[:, 0:2]
+        nds_trj_gs = np.array(self.gs_actual_trj[:, 0:2])
+        vel_ob_vel_norm_gs = np.linalg.norm(self.agent_gs.observed_trajectory[:, 2:4], axis=1)
+        vel_nds_vel_norm_gs = np.linalg.norm(self.gs_actual_trj[:, 2:4], axis=1)
+
+        "---- sava data ----"
+        # prepare data
+        # simu_trj = np.concatenate((simu_trj_lt, simu_trj_gs), axis=1)
+        df_simu_lt = pd.DataFrame(simu_trj_lt, columns=[str(case_id)+'-x', 'y'])
+        df_simu_gs = pd.DataFrame(simu_trj_gs, columns=[str(case_id)+'-x', 'y'])
+        df_nds_lt = pd.DataFrame(nds_trj_lt, columns=[str(case_id)+'-x', 'y'])
+        df_nds_gs = pd.DataFrame(nds_trj_gs, columns=[str(case_id)+'-x', 'y'])
+
+        df_simu_v_lt = pd.DataFrame(vel_ob_vel_norm_lt, columns=[str(case_id)])
+        df_simu_v_gs = pd.DataFrame(vel_ob_vel_norm_gs, columns=[str(case_id)])
+        df_nds_v_lt = pd.DataFrame(vel_nds_vel_norm_lt, columns=[str(case_id)])
+        df_nds_v_gs = pd.DataFrame(vel_nds_vel_norm_gs, columns=[str(case_id)])
+
+        book = load_workbook(file_name)
+        # # write data
+        with pd.ExcelWriter(file_name, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
+            writer.book = book
+            writer.sheets = {ws.title: ws for ws in book.worksheets}
+
+            df_simu_lt.to_excel(writer, header=True, index=False,
+                                sheet_name='simulation LT Trajectory',
+                                startcol=(case_id - num_failed) * 2)
+
+            df_simu_gs.to_excel(writer, header=True, index=False,
+                                sheet_name='simulation GS Trajectory',
+                                startcol=(case_id - num_failed) * 2)
+
+            df_nds_lt.to_excel(writer, header=True, index=False,
+                               sheet_name='Ground truth LT Trajectory',
+                               startcol=(case_id - num_failed) * 2)
+
+            df_nds_gs.to_excel(writer, header=True, index=False,
+                               sheet_name='Ground truth GS Trajectory',
+                               startcol=(case_id - num_failed) * 2)
+
+            df_nds_v_lt.to_excel(writer, header=True, index=False,
+                                 sheet_name='Ground truth LT velocity',
+                                 startcol=case_id - num_failed)
+
+            df_nds_v_gs.to_excel(writer, header=True, index=False,
+                                 sheet_name='Ground truth GS velocity',
+                                 startcol=case_id - num_failed)
+
+            df_simu_v_lt.to_excel(writer, header=True, index=False,
+                                  sheet_name='Simulation LT velocity',
+                                  startcol=case_id - num_failed)
+
+            df_simu_v_gs.to_excel(writer, header=True, index=False,
+                                  sheet_name='Simulation GS velocity',
+                                  startcol=case_id - num_failed)
+
+            writer.save()
 
     def save_conv_meta(self, trajectory_collection, ipv_estimation_collection, file_name, draw=False):
         """
@@ -1781,12 +1865,23 @@ def main_simulate_nds():
            * 'replay' *** Set dt as 0.12 (in agent.py) before simulation ***
        """
 
-    model_type = 'replay'
+    model_type = 'opt'
+    target = 'simu'
+
+    data_path = '../outputs/5_gt_interaction/data_records/' \
+                + target + '/' + model_type + '/'
+    if not os.path.exists(data_path):
+        os.makedirs(data_path)
+
+    start_time = strftime("%Y-%m-%d-%H", gmtime())
+    file_name = data_path + 'simulation_detail-' + start_time + '.xlsx'
+    workbook = xlsxwriter.Workbook(file_name)
+    workbook.close()
 
     num_failed = 0
 
-    # for case_id in range(130):
-    for case_id in {113}:
+    for case_id in range(130):
+        # for case_id in {51}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
@@ -1796,7 +1891,7 @@ def main_simulate_nds():
             num_failed += 1
         else:
             "1. tag for simulation"
-            tag = 'simu-' + model_type + str(case_id)
+            tag = target + '-' + model_type + str(case_id)
 
             "2. tag for testing"
             # tag = model_type + '-test-lattice' + str(case_id)
@@ -1819,22 +1914,38 @@ def main_simulate_nds():
                 for _, inter_agent in enumerate(simu.agent_lt.estimated_inter_agent):
                     inter_agent.target = 'gs_nds'
 
-                # simu.agent_gs.estimated_inter_agent.ipv = simu.agent_lt.ipv
-                # simu.agent_lt.estimated_inter_agent.ipv = simu.agent_gs.ipv
+                # simu.agent_gs.estimated_inter_agent[0].ipv = simu.agent_lt.ipv
+                # simu.agent_lt.estimated_inter_agent[0].ipv = simu.agent_gs.ipv
 
                 try:
+                    fig_path = '../outputs/5_gt_interaction/figures/' + target + '/' \
+                               + model_type + '-case-' + str(simu.case_id) + '/'
+                    if not os.path.exists(fig_path):
+                        os.makedirs(fig_path)
+
                     time1 = time.perf_counter()
-                    simu.interact(simu_step=int(simu.case_len), make_video=True, break_when_finish=False)
+                    simu.interact(simu_step=int(simu.case_len),
+                                  make_video=False,
+                                  break_when_finish=False,
+                                  file_path=fig_path)
                     time2 = time.perf_counter()
                     print('time consumption: ', time2 - time1)
-                    simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
-                                                               simu.agent_gs.observed_trajectory[:, 0:2],
-                                                               case_type='nds')
-                    # print final trajectory at given path
-                    simu.visualize_final_results(file_path='../outputs/5_gt_interaction/figures/')
-                    # simu.save_event_meta(num_failed,
-                    #                      file_name='outputs/simulation_meta_data.xlsx',
-                    #                      sheet_name=model_type + ' simulation')
+
+                    # ----print final trajectory at given path
+                    # simu.visualize_final_results(file_path=fig_path)
+
+                    # ----get semantic interaction result
+                    # simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
+                    #                                            simu.agent_gs.observed_trajectory[:, 0:2],
+                    #                                            case_type='nds')
+
+                    # ----save meta info of each interaction simulation
+                    # simu.save_simu_meta(num_failed, file_name=fig_path + 'simulation_meta_data.xlsx',
+                    #                     sheet_name=model_type + ' simulation')
+
+                    # ----save detailed trajectory of each simulation
+
+                    simu.save_simu_details(num_failed, file_name=file_name)
 
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
@@ -2054,8 +2165,8 @@ def main_analyze_interaction_strength_v2():
         workbook.add_worksheet()
         workbook.close()
 
-    proc_bar = tqdm(range(0, 130))
-    # proc_bar = tqdm({1})
+    # proc_bar = tqdm(range(0, 130))
+    proc_bar = tqdm({106})
     for case_id in proc_bar:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
@@ -2117,8 +2228,8 @@ def main_analyze_interaction_strength_v2():
                                                  'gs': simu.agent_gs.trj_solution[:, 0:2]}
 
             trajectory_collection.append(traj_coll_temp)
-            axes, estimated_ipv = simu.cal_trj_similarity(trajectory_collection)
-            inter_strength_matrix = simu.cal_interaction_strength(trajectory_collection, ax=axes[1],
+            axes, estimated_ipv = simu.cal_trj_similarity(trajectory_collection, isFig=False)
+            inter_strength_matrix = simu.cal_interaction_strength(trajectory_collection, ax=axes,
                                                                   file_dir=dir_name,
                                                                   isFig=False,
                                                                   isSaveFig=False)
@@ -2138,11 +2249,11 @@ if __name__ == '__main__':
     # main_simulate_ramp_merge()
 
     'simulate with nds data from Jianhe-Xianxia intersection'
-    # main_simulate_nds()
+    main_simulate_nds()
 
     'analyze interaction strength by solving game at each time step'
     # main_analyze_interaction_strength_v1()
     # main_analyze_multi_interaction_strength_v1()
 
     'analyze interaction strength by solving game only once at the beginning'
-    main_analyze_interaction_strength_v2()
+    # main_analyze_interaction_strength_v2()

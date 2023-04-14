@@ -15,7 +15,7 @@ import time
 
 # simulation setting
 dt = 0.12
-TRACK_LEN = 40
+TRACK_LEN = 10
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 5
 
@@ -27,8 +27,8 @@ weight_metric = weight_metric / weight_metric.sum()
 
 # weight of interior and group cost
 WEIGHT_INT = 1
-# WEIGHT_GRP = 0.22
-WEIGHT_GRP = 0.4
+WEIGHT_GRP = 0.22  # for simulation
+# WEIGHT_GRP = 0.4  # for planning
 
 # parameters of action bounds
 MAX_STEERING_ANGLE = math.pi / 6
