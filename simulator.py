@@ -12,6 +12,7 @@ from agent import Agent
 from tools.utility import draw_rectangle, get_central_vertices
 from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from NDS_analysis import analyze_ipv_in_nds, cal_pet
 import xlsxwriter
 import time
@@ -272,8 +273,14 @@ class Simulator:
         # set figures
         fig, axes = plt.subplots(1, 2, figsize=[10, 5])
         # fig.suptitle('trajectory_LT_' + self.semantic_result)
-        axes[0].set_title('trajectory')
-        axes[1].set_title('velocity')
+        # axes[0].set_title('trajectory')
+        # axes[1].set_title('velocity')
+        axes[0].set_xlabel('X (m)')
+        axes[0].set_ylabel('Y (m)')
+        axes[1].set_xlabel('Time frame')
+        axes[1].set_ylabel('Velocity (m/s)')
+        axes[1].set_ylim([0, 7])
+
         if self.sim_type == 'simu_left_turn':
             axes[0].set(aspect=1, xlim=(-9.1, 24.9), ylim=(-13, 8))
             img = plt.imread('background_pic/T_intersection.jpg')
@@ -291,6 +298,7 @@ class Simulator:
             axes[0].set(aspect=1, xlim=(-22 - 13, 53 - 13), ylim=(-31 - 7.8, 57 - 7.8))
             img = plt.imread('background_pic/Jianhexianxia-v2.png')
             axes[0].imshow(img, extent=[-28 - 13, 58 - 13, -42 - 7.8, 64 - 7.8])
+
             # central vertices
             lt_origin_point = self.agent_lt.observed_trajectory[0, 0:2]
             gs_origin_point = self.agent_gs.observed_trajectory[0, 0:2]
@@ -320,54 +328,65 @@ class Simulator:
 
         num_frame = len(lt_ob_trj)
 
+        # reference path
+        # axes[0].plot(cv_1[:, 0], cv_1[:, 1], 'b-', linewidth=0.1)
+        # axes[0].plot(cv_2[:, 0], cv_2[:, 1], 'r-', linewidth=0.1)
+
         "---- show plans at each time step ----"
-        axes[0].plot(cv_1[:, 0], cv_1[:, 1], 'b-', linewidth=0.1)
-        axes[0].plot(cv_2[:, 0], cv_2[:, 1], 'r-', linewidth=0.1)
 
         # ----position at each time step
         # version 1
-        # for t in range(num_frame):
-        #     # simulation results
-        #     draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
-        #                    para_alpha=0.3, para_color='#0E76CF')
-        #     draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
-        #                    para_alpha=0.3, para_color='#7030A0')
-        #     #
-        #     # nds ground truth
-        #     if self.sim_type == 'nds':
-        #         draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
-        #                        para_alpha=0.3, para_color='blue')
-        #
-        #         draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
-        #                        para_alpha=0.3, para_color='red')
+        for t in range(num_frame):
+
+            # simulation results
+            draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
+                           para_alpha=0.3, para_color='#0E76CF')
+            draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
+                           para_alpha=0.3, para_color='#7030A0')
+            #
+            # nds ground truth
+            if self.sim_type == 'nds':
+                draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
+                               para_alpha=0.3, para_color='blue')
+
+                draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
+                               para_alpha=0.3, para_color='red')
+
+            # Create a custom legend
+            labels = {'ob_lt': 'Left turn simulation', 'ob_gs': 'Go straight simulation',
+                      'nds_lt': 'Left turn ground truth', 'nds_gs': 'Go straight ground truth'}
+            legend_patches = [patches.Patch(color=c, label=labels[l]) for l, c in
+                              zip(['ob_lt', 'ob_gs', 'nds_lt', 'nds_gs'],
+                                  ['#0E76CF', '#7030A0', 'blue', 'red'])]
+            axes[0].legend(handles=legend_patches)
 
         # version 2
-        axes[0].scatter(lt_ob_trj[:num_frame, 0],
-                        lt_ob_trj[:num_frame, 1],
-                        s=50,
-                        alpha=0.6,
-                        color='#0E76CF',
-                        label='left-turn simulation')
-        axes[0].scatter(gs_ob_trj[:num_frame, 0],
-                        gs_ob_trj[:num_frame, 1],
-                        s=50,
-                        alpha=0.6,
-                        color='#7030A0',
-                        label='go-straight simulation')
+        # axes[0].scatter(lt_ob_trj[:num_frame, 0],
+        #                 lt_ob_trj[:num_frame, 1],
+        #                 s=50,
+        #                 alpha=0.6,
+        #                 color='#0E76CF',
+        #                 label='left-turn simulation')
+        # axes[0].scatter(gs_ob_trj[:num_frame, 0],
+        #                 gs_ob_trj[:num_frame, 1],
+        #                 s=50,
+        #                 alpha=0.6,
+        #                 color='#7030A0',
+        #                 label='go-straight simulation')
 
-        if self.sim_type == 'nds':
-            axes[0].scatter(lt_nds_trj[:num_frame, 0],
-                            lt_nds_trj[:num_frame, 1],
-                            s=50,
-                            alpha=0.3,
-                            color='blue',
-                            label='left-turn NDS')
-            axes[0].scatter(gs_nds_trj[:num_frame, 0],
-                            gs_nds_trj[:num_frame, 1],
-                            s=50,
-                            alpha=0.3,
-                            color='red',
-                            label='go-straight NDS')
+        # if self.sim_type == 'nds':
+        #     axes[0].scatter(lt_nds_trj[:num_frame, 0],
+        #                     lt_nds_trj[:num_frame, 1],
+        #                     s=50,
+        #                     alpha=0.3,
+        #                     color='blue',
+        #                     label='left-turn NDS')
+        #     axes[0].scatter(gs_nds_trj[:num_frame, 0],
+        #                     gs_nds_trj[:num_frame, 1],
+        #                     s=50,
+        #                     alpha=0.3,
+        #                     color='red',
+        #                     label='go-straight NDS')
 
         # ----full tracks at each time step
         # for t in range(self.num_step):
@@ -384,28 +403,29 @@ class Simulator:
         #     axes[0].plot(lt_inter_track[:, 0], lt_inter_track[:, 1], '--', color='red', alpha=0.5)
 
         # ----connect two agents
-        for t in range(self.num_step + 1):
-            axes[0].plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
-                         [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
-                         color='gray',
-                         alpha=0.2)
+        # for t in range(self.num_step + 1):
+        #     axes[0].plot([self.agent_lt.observed_trajectory[t, 0], self.agent_gs.observed_trajectory[t, 0]],
+        #                  [self.agent_lt.observed_trajectory[t, 1], self.agent_gs.observed_trajectory[t, 1]],
+        #                  color='gray',
+        #                  alpha=0.2)
 
         "---- show velocity ----"
         x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
         axes[1].plot(x_range, vel_ob_vel_norm_lt, linestyle='--',
-                     color='blue', label='left-turn simulation')
+                     color='#0E76CF', label='Left turn simulation')
         axes[1].plot(x_range, vel_ob_vel_norm_gs, linestyle='--',
-                     color='red', label='go-straight simulation')
+                     color='#7030A0', label='Go straight simulation')
 
         if self.sim_type == 'nds':
             x_range_nds = self.simu_time + x_range
-            axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range_nds],
-                         color='red', label='go-straight NDS')
             axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range_nds],
-                         color='blue', label='left-turn NDS')
+                         color='blue', label='Left turn ground truth')
+            axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range_nds],
+                         color='red', label='Go straight ground truth')
+
 
         axes[1].legend()
-        axes[0].legend()
+        # axes[0].legend()
         # axes[0].axis('equal')
         plt.show()
         plt.savefig(file_path + self.tag + '-final.png', dpi=600)
@@ -1229,10 +1249,10 @@ class Simulator:
         "---- sava data ----"
         # prepare data
         # simu_trj = np.concatenate((simu_trj_lt, simu_trj_gs), axis=1)
-        df_simu_lt = pd.DataFrame(simu_trj_lt, columns=[str(case_id)+'-x', 'y'])
-        df_simu_gs = pd.DataFrame(simu_trj_gs, columns=[str(case_id)+'-x', 'y'])
-        df_nds_lt = pd.DataFrame(nds_trj_lt, columns=[str(case_id)+'-x', 'y'])
-        df_nds_gs = pd.DataFrame(nds_trj_gs, columns=[str(case_id)+'-x', 'y'])
+        df_simu_lt = pd.DataFrame(simu_trj_lt, columns=[str(case_id) + '-x', 'y'])
+        df_simu_gs = pd.DataFrame(simu_trj_gs, columns=[str(case_id) + '-x', 'y'])
+        df_nds_lt = pd.DataFrame(nds_trj_lt, columns=[str(case_id) + '-x', 'y'])
+        df_nds_gs = pd.DataFrame(nds_trj_gs, columns=[str(case_id) + '-x', 'y'])
 
         df_simu_v_lt = pd.DataFrame(vel_ob_vel_norm_lt, columns=[str(case_id)])
         df_simu_v_gs = pd.DataFrame(vel_ob_vel_norm_gs, columns=[str(case_id)])
@@ -1880,8 +1900,8 @@ def main_simulate_nds():
 
     num_failed = 0
 
-    for case_id in range(130):
-        # for case_id in {51}:
+    # for case_id in range(130):
+    for case_id in {51}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
@@ -1945,7 +1965,7 @@ def main_simulate_nds():
 
                     # ----save detailed trajectory of each simulation
 
-                    simu.save_simu_details(num_failed, file_name=file_name)
+                    # simu.save_simu_details(num_failed, file_name=file_name)
 
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')
