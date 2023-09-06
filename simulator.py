@@ -13,7 +13,7 @@ from tools.utility import draw_rectangle, get_central_vertices
 from tools.lattice_planner import lattice_planning
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from NDS_analysis import analyze_ipv_in_nds, cal_pet
+from NDS_analysis import get_ipv_in_nds, cal_pet
 import xlsxwriter
 import time
 from tqdm import tqdm
@@ -58,6 +58,7 @@ class Simulator:
         self.gs_actual_trj = []
         self.lt_actual_trj = []
         self.ipv_list = []
+        self.time_consumption_per_step = []
 
     def initialize(self, scenario, case_tag):
         self.scenario = scenario
@@ -72,23 +73,26 @@ class Simulator:
         self.agent_gs.conl_type = self.scenario.conl_type[1]
         self.tag = case_tag
 
-    def interact(self, simu_step=30, iter_limit=30,
+    def interact(self, simu_step=10, iter_limit=30,
                  make_video=False,
                  break_when_finish=False,
                  interactive=True,
-                 file_path='/'
+                 file_path='/',
+                 return_time_consumption=False
                  ):
         """
         Simulate the given scenario step by step
+        交互仿真框架
 
         Parameters
         ----------
-        file_path
-        interactive
-        iter_limit: max iteration number
-        make_video
-        simu_step: number of simulation steps
+        file_path: 图片、视频、数据输出路径
+        interactive: 是否考虑交互（默认是）
+        iter_limit: max iteration number 最大迭代次数
+        make_video: 是否输出交互录像
+        simu_step: number of simulation steps 仿真步数
         break_when_finish: (if set to be True) break the simulation when any agent crossed the conflict point
+        return_time_consumption: 是否记录仿真耗时
 
         """
         self.num_step = simu_step
@@ -98,16 +102,18 @@ class Simulator:
             plt.ion()
             _, ax = plt.subplots(figsize=[8, 8])
 
+        # 进入仿真步进，分别为两个交互对象选择控制模型
         for t in range(self.num_step):
 
             # print('time_step: ', t, '/', self.num_step)
 
             "==plan for left-turn=="
+            "为左转车选择控制模型"
             if self.agent_lt.conl_type in {'linear-gt'}:
                 # time1 = time.perf_counter()
                 self.agent_lt.lp_ibr_interact(iter_limit=iter_limit, interactive=interactive)
                 # time2 = time.perf_counter()
-                # print('time consumption: ', time2 - time1)
+                # print('time consumption per step: ', time2 - time1)
 
             elif self.agent_lt.conl_type in {'gt', 'opt'}:
 
@@ -158,8 +164,14 @@ class Simulator:
                     self.agent_lt.plan_count = self.agent_lt.plan_count - 1
 
             "==plan for go straight=="
+            "为直行车选择控制模型"
             if self.agent_gs.conl_type in {'linear-gt'}:
+                # time1 = time.perf_counter()
                 self.agent_gs.lp_ibr_interact(iter_limit=iter_limit, interactive=interactive)
+                # time2 = time.perf_counter()
+                # print('time consumption per step: ', time2 - time1)
+                # if return_time_consumption:
+                #     self.time_consumption_per_step.append(time2 - time1)
 
             elif self.agent_gs.conl_type in {'gt', 'opt'}:
                 # ==interaction with parallel virtual agents
@@ -260,7 +272,7 @@ class Simulator:
                 plt.savefig(file_path + self.tag + '-' + str(t) + '.png',
                             dpi=300)
 
-            if break_when_finish:
+            if break_when_finish:  # 若有一方已经通过冲突点，则认为交互结束，可以选择是否在此时退出仿真
                 if self.agent_gs.observed_trajectory[-1, 0] < self.agent_lt.observed_trajectory[-1, 0] \
                         or self.agent_lt.observed_trajectory[-1, 1] > self.agent_gs.observed_trajectory[-1, 1]:
                     self.num_step = t + 1
@@ -423,14 +435,13 @@ class Simulator:
             axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range_nds],
                          color='red', label='Go straight ground truth')
 
-
         axes[1].legend()
         # axes[0].legend()
         # axes[0].axis('equal')
         plt.show()
         plt.savefig(file_path + self.tag + '-final.png', dpi=600)
         # plt.savefig(file_path + self.tag + '-final.svg')
-        plt.close()
+        # plt.close()
 
     def visualize_single_step(self, file_path):
 
@@ -652,7 +663,20 @@ class Simulator:
         # plt.close()
 
     def read_nds_scenario(self, controller_type_lt, controller_type_gs, t=0):
-        cross_id, data_cross, _ = analyze_ipv_in_nds(self.case_id)
+        """
+        读取驾驶数据片段
+        Parameters
+        ----------
+        controller_type_lt: 左转车控制模型
+        controller_type_gs: 直行车控制模型
+        t: 仿真时间起点（在对应驾驶片段中的第几帧）
+
+        Returns
+        -------
+
+        """
+        # 读取驾驶数据片段中的交互片段及IPV分析结果
+        cross_id, data_cross, _ = get_ipv_in_nds(self.case_id)
         # data_cross:
         # 0-ipv_lt | ipv_lt_error | lt_px | lt_py  | lt_vx  | lt_vy  | lt_heading  |...
         # 7-ipv_gs | ipv_gs_error | gs_px | gs_py  | gs_vx  | gs_vy  | gs_heading  |
@@ -661,11 +685,14 @@ class Simulator:
             print('-----no trajectory crossed in case' + str(self.case_id))
             return None
         else:
+            # 读取初始运动状态
             init_position_lt = [data_cross[t, 2] - 13, data_cross[t, 3] - 7.8]
             init_velocity_lt = [data_cross[t, 4], data_cross[t, 5]]
             init_acceleration_lt = [(data_cross[t + 1, 4] - data_cross[t + 1, 4]) / 0.12,
                                     (data_cross[t + 1, 5] - data_cross[t + 1, 5]) / 0.12]
             init_heading_lt = data_cross[t, 6]
+
+            # 博弈相关的模型需要额外读取交互倾向IPV
             if controller_type_lt in {'opt', 'gt', 'linear-gt'}:
                 ipv_weight_lt = 1 - data_cross[4:, 1]
                 ipv_weight_lt = ipv_weight_lt / ipv_weight_lt.sum()
@@ -674,11 +701,14 @@ class Simulator:
             else:
                 ipv_lt = 0
 
+            # 读取初始运动状态
             init_position_gs = [data_cross[t, 9] - 13, data_cross[t, 10] - 7.8]
             init_velocity_gs = [data_cross[t, 11], data_cross[t, 12]]
             init_acceleration_gs = [(data_cross[t + 1, 11] - data_cross[t + 1, 11]) / 0.12,
                                     (data_cross[t + 1, 12] - data_cross[t + 1, 12]) / 0.12]
             init_heading_gs = data_cross[t, 13]
+
+            # 博弈相关的模型需要额外读取交互倾向IPV
             if controller_type_gs in {'opt', 'gt', 'linear-gt'}:
                 ipv_weight_gs = 1 - data_cross[4:, 8]
                 ipv_weight_gs = ipv_weight_gs / ipv_weight_gs.sum()
@@ -686,6 +716,8 @@ class Simulator:
                 # ipv_gs = max(sum(ipv_weight_gs * data_cross[4:, 7])-0.2, -math.pi*3/8)
             else:
                 ipv_gs = 0
+
+            # 保存实际轨迹
             self.lt_actual_trj = data_cross[:, 2:7]
             self.lt_actual_trj[:, 0] = self.lt_actual_trj[:, 0] - 13
             self.lt_actual_trj[:, 1] = self.lt_actual_trj[:, 1] - 7.8
@@ -1876,18 +1908,28 @@ def main_simulate_ramp_merge():
 def main_simulate_nds():
     """
        === main for simulating unprotected left-turning scenarios in Jianhe-Xianxia dataset ===
+       === 基于剑河仙霞数据的无保护左转交互仿真 ===
        1. Set case_id to get initial scenarios state of a single case
+       1. 通过case_id选择交互事件片段
        2. Change controller type by manually setting controller_type_xx as:
+       2. 通过controller_type_lt和controller_type_gs选择左转车和直行车的控制模型，默认都采用model_type. 可选模型包括：
            * 'gt' is the game-theoretic planner work by solving IBR process
+            'gt'为非线性博弈模型（通过IBR求解非线性博弈问题均衡）
            * 'opt' is the optimal controller work by solving single optimization
+            'opt'为最优控制模型（求解单次轨迹优化）
            * 'linear-gt' is a linear game-theoretic planner work by solving IBR
+            'linear-gt'是线性化博弈模型（通过IBR求解线性博弈问题均衡，求解效率高）
            * 'idm'
+           * 'lattice'
+            'lattice'用于作为被测算法，非行为模型
            * 'replay' *** Set dt as 0.12 (in agent.py) before simulation ***
+            'replay'为直接回放原始轨迹数据，当进行涉及自然驾驶数据的仿真时，需在agent.py中设置dt = 0.12，以保证规划时间间隔与自然驾驶数据一致
        """
 
-    model_type = 'opt'
-    target = 'simu'
+    model_type = 'idm'
+    target = 'simu'  # 仅用于记录仿真目的，不影响程序运行
 
+    # 仿真结果输出路径
     data_path = '../outputs/5_gt_interaction/data_records/' \
                 + target + '/' + model_type + '/'
     if not os.path.exists(data_path):
@@ -1900,8 +1942,8 @@ def main_simulate_nds():
 
     num_failed = 0
 
-    # for case_id in range(130):
-    for case_id in {51}:
+    for case_id in range(130):
+    # for case_id in {51}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
@@ -1910,16 +1952,25 @@ def main_simulate_nds():
                          91, 92, 94, 96, 97, 98, 100}:  # no path-crossing event
             num_failed += 1
         else:
-            "1. tag for simulation"
-            tag = target + '-' + model_type + str(case_id)
 
-            "2. tag for testing"
-            # tag = model_type + '-test-lattice' + str(case_id)
+            "tag设置仅用于记录仿真目的，不影响程序运行"
+            # 1. tag for simulation
+            # tag = target + '-' + model_type + str(case_id)
 
+            # 2. tag for testing
+            tag = model_type + '-test-lattice' + str(case_id)
             print('start case:' + tag)
 
+            "实例化仿真器"
             simu = Simulator(case_id=case_id)
+
+            "定义仿真类型，该步骤影响agent实例化时的参考路径选择"
+            # 'nds':剑河仙霞数据
+            # 'simu_left_turn':T型路口仿真
+            # 'simu_ramp': 匝道汇入仿真
             simu.sim_type = 'nds'
+
+            "定义agent的规控器类型,然后初始化仿真器"
             controller_type_lt = model_type
             controller_type_gs = model_type
             simu_scenario = simu.read_nds_scenario(controller_type_lt, controller_type_gs)
@@ -1939,33 +1990,57 @@ def main_simulate_nds():
 
                 try:
                     fig_path = '../outputs/5_gt_interaction/figures/' + target + '/' \
-                               + model_type + '-case-' + str(simu.case_id) + '/'
+                               + start_time + model_type + '-case-' + str(simu.case_id) + '/'
                     if not os.path.exists(fig_path):
                         os.makedirs(fig_path)
 
-                    time1 = time.perf_counter()
+                    "开始交互仿真"
+                    # time1 = time.perf_counter()
                     simu.interact(simu_step=int(simu.case_len),
                                   make_video=False,
                                   break_when_finish=False,
-                                  file_path=fig_path)
-                    time2 = time.perf_counter()
-                    print('time consumption: ', time2 - time1)
+                                  file_path=fig_path,
+                                  return_time_consumption=False)
+                    # time2 = time.perf_counter()
+                    # print('overall time consumption: ', time2 - time1)
+
+                    # ----plot time consumption
+                    # Create a box plot
+                    # plt.boxplot(simu.time_consumption_per_step)
+                    # plt.title('Time Consumption Box Plot')
+                    # plt.xlabel('Task')
+                    # plt.ylabel('Time (seconds)')
+                    # plt.show()
+
+                    # # Prepare data
+                    # df = pd.DataFrame(simu.time_consumption_per_step, columns=['horizon=30'])
+                    #
+                    # # File name
+                    # file_name = './time_consumption_record.xlsx'
+                    #
+                    # # Write data
+                    # with pd.ExcelWriter(file_name, mode='a', engine="openpyxl",
+                    #                     if_sheet_exists="overlay", ) as writer:
+                    #     df.to_excel(writer, header=True, index=False, sheet_name='Sheet1', startcol=8)
 
                     # ----print final trajectory at given path
+                    # ----打印最终交互结果
                     # simu.visualize_final_results(file_path=fig_path)
 
                     # ----get semantic interaction result
+                    # ----获取语义交互结果（抢行or让行）
                     # simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
                     #                                            simu.agent_gs.observed_trajectory[:, 0:2],
                     #                                            case_type='nds')
 
                     # ----save meta info of each interaction simulation
+                    # ----保存交互事件的特征量
                     # simu.save_simu_meta(num_failed, file_name=fig_path + 'simulation_meta_data.xlsx',
                     #                     sheet_name=model_type + ' simulation')
 
                     # ----save detailed trajectory of each simulation
-
-                    # simu.save_simu_details(num_failed, file_name=file_name)
+                    # ----保存交互轨迹
+                    simu.save_simu_details(num_failed, file_name=file_name)
 
                 except IndexError:
                     print('# ====Failed:' + tag + '==== #')

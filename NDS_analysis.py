@@ -5,10 +5,11 @@ from matplotlib import pyplot as plt
 from agent import Agent
 from tools.utility import get_central_vertices, smooth_ployline, get_intersection_point, draw_rectangle
 import pandas as pd
+import time
 from datetime import datetime
 import xlsxwriter
 
-illustration_needed = True
+illustration_needed = False
 print_needed = False
 save_data_needed = False
 # load data
@@ -32,27 +33,31 @@ inter_num = mat['interact_agent_num']
 def find_inter_od(case_id):
     """
     find the starting and end frame of each FC agent that interacts with LT agent
-    :param case_id:
-    :return:
+    寻找一个（剑河仙霞数据集）驾驶数据片段中的有效交互片段
+    :param case_id: 数据片段序号
+    :return: 交互的起终点
     """
     case_info = inter_info[case_id]
     lt_info = case_info[0]
 
     # find co-present gs agents (not necessarily interacting)
+    # 读取所有与左转车同时存在于场景中的直行车（这些直行车不一定与左转车存在交互）
     gs_info_multi = case_info[1:inter_num[0, case_id] + 1]
 
     # find interacting gs agent
+    # 遍历所有同时存在过的直行车，判断交互存在性及何时存在交互
     init_id = 0
     inter_o = np.zeros(np.size(gs_info_multi, 0))
     inter_d = np.zeros(np.size(gs_info_multi, 0))
     for i in range(np.size(gs_info_multi, 0)):
         gs_agent_temp = gs_info_multi[i]
         solid_frame = np.nonzero(gs_agent_temp[:, 0])[0]
-        solid_range = range(solid_frame[0], solid_frame[-1])
+        solid_range = range(solid_frame[0], solid_frame[-1])  # 同时存在的时间片段
         inter_frame = solid_frame[0] + np.array(
-            np.where(gs_agent_temp[solid_range, 1] - lt_info[solid_range, 1] < 0)[0])
+            np.where(gs_agent_temp[solid_range, 1] - lt_info[solid_range, 1] < 0)[0])  # 交互片段
 
         # find start and end frame with each gs agent
+        # 记录交互起终点
         if inter_frame.size > 1:
             if i == init_id:
                 inter_o[i] = inter_frame[0]
@@ -64,7 +69,15 @@ def find_inter_od(case_id):
     return inter_o, inter_d
 
 
-def analyze_ipv_in_nds(case_id, fig=False):
+def get_ipv_in_nds(case_id, fig=False):
+    """
+    从excel读取给定驾驶数据片段中的交互事件片段
+    Parameters
+    ----------
+    case_id: 驾驶数据片段序号
+    fig: 是否绘制该片段中个体的ipv(主要用于调试)
+
+    """
     file_name = 'data/ipv_estimation/' + str(case_id) + '.xlsx'
     file = pd.ExcelFile(file_name)
     num_sheet = len(file.sheet_names)
@@ -72,23 +85,26 @@ def analyze_ipv_in_nds(case_id, fig=False):
     start_x = 0
     crossing_id = -1
 
+    # 遍历该片段中的所有直行车辆
     for i in range(num_sheet):
         "get ipv data from excel"
+        "读取IPV"
         df_ipv_data = pd.read_excel(file_name, sheet_name=i)
         ipv_data_temp = df_ipv_data.values
         ipv_value_lt, ipv_value_gs = ipv_data_temp[:, 0], ipv_data_temp[:, 7]
         ipv_error_lt, ipv_error_gs = ipv_data_temp[:, 1], ipv_data_temp[:, 8]
 
         # find cross event
+        # 寻找让行于左转车的直行车
         x_lt = ipv_data_temp[:, 2]
         x_gs = ipv_data_temp[:, 9]
         delta_x = x_lt - x_gs  # x position of LT is larger than that of interacting FC
-        if len(delta_x) > 0:
+        if len(delta_x) > 0:  # 如果直行车让行于左转车，则将存在某一帧满足：左转车的x坐标大于直行车的x坐标
             if np.max(delta_x) > 0 and crossing_id == -1:
-                crossing_id = i
+                crossing_id = i  # 记录让行直行车的id
 
         "draw ipv value and error bar"
-
+        "绘制交互双方的ipv"
         if fig:
             x = start_x + np.arange(len(ipv_value_lt))
             start_x = start_x + len(ipv_value_lt)
@@ -137,12 +153,16 @@ def analyze_ipv_in_nds(case_id, fig=False):
     plt.show()
 
     # save ipv during the crossing event
+    # 区分直行车是否让行，分别保存交互事件数据
     case_data_crossing = []
     case_data_non_crossing = []
+
+    # 保存让行直行车的交互数据
     if not crossing_id == -1:
         df_data = pd.read_excel(file_name, sheet_name=crossing_id)
         case_data_crossing = df_data.values[:, :]
 
+    # 保存抢行直行车的交互数据
     for sheet_id in range(num_sheet):
         if not sheet_id == crossing_id:
             df_data = pd.read_excel(file_name, sheet_name=sheet_id)
@@ -153,14 +173,19 @@ def analyze_ipv_in_nds(case_id, fig=False):
 
 def cal_pet(trj_a, trj_b, type_cal):
     """
-    calculate the PET of two given trajectory
-    :param trj_a:
-    :param trj_b:
-    :param type_cal: PET or APET
-    :return:
+    Calculate the PET of two given trajectory
+    计算两条给定轨迹的PET或APET
+    Parameters
+    ----------
+    trj_a
+    trj_b
+    type_cal: 'pet'或'apet'
+
+
     """
 
     "find the conflict point"
+    "寻找两条轨迹的冲突点"
     conflict_point_str = get_intersection_point(trj_a, trj_b)
     conflict_point = np.array(conflict_point_str)
 
@@ -182,6 +207,7 @@ def cal_pet(trj_a, trj_b, type_cal):
         conflict_point = conflict_point[0, :]
 
     "find the point that most closed to cp in each trajectory"
+    "寻找两条轨迹各自距离冲突点最近的轨迹点"
     smoothed_trj_a, smoothed_progress_a = smooth_ployline(trj_a, point_num=100)
     cp2trj_a = np.linalg.norm(smoothed_trj_a - conflict_point, axis=1)
     min_dcp2trj_a = np.amin(cp2trj_a)
@@ -193,6 +219,7 @@ def cal_pet(trj_a, trj_b, type_cal):
     cp_index_b = np.where(min_dcp2trj_b == cp2trj_b)
 
     "calculate time to cp"
+    "计算达到冲突点的时间差"
     seg_len_a = np.linalg.norm(trj_a[1:, :] - trj_a[:-1, :], axis=1)
     seg_len_b = np.linalg.norm(trj_b[1:, :] - trj_b[:-1, :], axis=1)
     vel_a = seg_len_a / 0.12
@@ -205,7 +232,7 @@ def cal_pet(trj_a, trj_b, type_cal):
     dis2conf_a = -(longi_progress_a - smoothed_progress_a[cp_index_a])
     dis2conf_b = -(longi_progress_b - smoothed_progress_b[cp_index_b])
 
-    ttcp_a = dis2conf_a[:-1] / vel_a
+    ttcp_a = dis2conf_a[:-1] / vel_a  # ttcp:time to conflict point
     ttcp_b = dis2conf_b[:-1] / vel_b
 
     solid_len = min(np.size(ttcp_a[ttcp_a > 0], 0), np.size(ttcp_b[ttcp_b > 0], 0))
@@ -227,17 +254,21 @@ def cal_pet(trj_a, trj_b, type_cal):
 
 def estimate_ipv_in_nds(case_id):
     """
-    estimate IPV in natural driving data and write results into excels
-    :param case_id:
-    :return:
+    估计自然驾驶数据片段中个体的交互倾向（IPV）
+    Parameters
+    ----------
+    case_id：（剑河仙霞）驾驶数据数据片段序号
+
     """
     output_path = 'outputs/ipv_estimation/'
 
+    # 计算当前驾驶数据片段中的交互事件起终点
     inter_o, inter_d = find_inter_od(case_id)
     case_info = inter_info[case_id]
     lt_info = case_info[0]
 
     # find co-present gs agents (not necessarily interacting)
+    # 读取所有与左转车同时存在于场景中的直行车（这些直行车不一定与左转车存在交互）
     gs_info_multi = case_info[1:inter_num[0, case_id] + 1]
 
     # initialize IPV
@@ -254,8 +285,10 @@ def estimate_ipv_in_nds(case_id):
     file_name = output_path + str(case_id) + '.xlsx'
 
     for t in range(np.size(lt_info, 0)):
+        print(t)
 
         "find current interacting agent"
+        "寻找t时刻的交互直行车"
         flag = 0
         for i in range(np.size(gs_info_multi, 0)):
             if inter_o[i] <= t < inter_d[i]:  # switch to next interacting agent
@@ -267,6 +300,7 @@ def estimate_ipv_in_nds(case_id):
                 start_time = max(int(inter_o[inter_id]), t - 10)
 
         # save data of last one
+        # 如果与某一个直行车的交互结束，则保存一次IPV估计结果
         if save_data_needed:
             if inter_id_save < inter_id or t == inter_d[-1]:
                 # if inter_d[inter_id_save] - inter_o[inter_id_save] > 3:
@@ -318,10 +352,12 @@ def estimate_ipv_in_nds(case_id):
                 inter_id_save = inter_id
 
         "IPV estimation process"
+        "对t时刻的IPV进行估计"
         if flag and (t - start_time > 3):
 
             "====simulation-based method===="
             # generate two agents
+            # 基于t时刻的状态，实例化两个交互对象
             init_position_lt = lt_info[start_time, 0:2] - [13, 7.8]
             init_velocity_lt = lt_info[start_time, 2:4]
             init_heading_lt = lt_info[start_time, 4]
@@ -337,6 +373,7 @@ def estimate_ipv_in_nds(case_id):
             gs_track = gs_track - np.repeat([[13, 7.8]], np.size(gs_track, 0), axis=0)
 
             # estimate ipv
+            # IPV估计
             agent_lt.estimate_self_ipv(lt_track, gs_track)
             ipv_collection[t, 0] = agent_lt.ipv
             ipv_error_collection[t, 0] = agent_lt.ipv_error
@@ -366,6 +403,7 @@ def estimate_ipv_in_nds(case_id):
             "====end of cost-based method===="
 
             "illustration"
+            "可视化IPV估计结果和轨迹状态"
             if illustration_needed:
                 ax1.cla()
                 ax1.set(ylim=[-2, 2])
@@ -427,25 +465,36 @@ def estimate_ipv_in_nds(case_id):
 
                 plt.pause(0.3)
 
-        elif inter_id is None:
+        elif inter_id is None:  # 如果t时刻没有交互对象，则跳过
             if print_needed:
                 print('no interaction')
 
-        elif t - start_time < 3:
+        elif t - start_time < 3:  # 如果交互时长小于3帧，则由于观测不足无法估计
             if print_needed:
                 print('no results, more observation needed')
 
 
 def visualize_nds(case_id):
+    """
+    播放给定驾驶数据片段中的车辆轨迹
+    Parameters
+    ----------
+    case_id：驾驶数据片段序号
+
+    """
     # abstract interaction info. of a given case
+    # 提取给定序号的驾驶数据片段中的所有信息
     case_info = inter_info[case_id]
     # left-turn vehicle
+    # 提取左转车信息
     lt_info = case_info[0]
     # go-straight vehicles
+    # 提取直行车（们）的信息
     gs_info_multi = case_info[1:inter_num[0, case_id] + 1]
 
     fig, ax1 = plt.subplots(1, figsize=[8, 8])
 
+    # 遍历左转车存在与场景中的所有时间片刻
     for t in range(np.size(lt_info, 0)):
         t_end = t + 10
         ax1.cla()
@@ -455,9 +504,11 @@ def visualize_nds(case_id):
         plt.text(-10, 60, 'T=' + str(t), fontsize=30)
 
         # position of go-straight vehicles
+        # 标记直行车的位置和未来轨迹
         for gs_id in range(np.size(gs_info_multi, 0)):
             if np.size(gs_info_multi[gs_id], 0) > t and not gs_info_multi[gs_id][t, 0] == 0:
                 # position
+                # 当前位置
                 draw_rectangle(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
                                gs_info_multi[gs_id][t, 4] / math.pi * 180, ax1,
                                para_alpha=1, para_color='#7030A0')
@@ -467,12 +518,17 @@ def visualize_nds(case_id):
                 #             color='red',
                 #             label='go-straight')
                 # future track
+                # 未来10帧轨迹
                 t_end_gs = min(t + 10, np.size(gs_info_multi[gs_id], 0))
                 ax1.plot(gs_info_multi[gs_id][t:t_end_gs, 0], gs_info_multi[gs_id][t:t_end_gs, 1],
                          alpha=0.8,
                          color='red')
 
         # position of left-turn vehicle
+        # 标记左转车的位置和未来轨迹
+
+        # position
+        # 当前位置
         draw_rectangle(lt_info[t, 0],  lt_info[t, 1],
                        lt_info[t, 4] / math.pi * 180, ax1,
                        para_alpha=1, para_color='#0E76CF')
@@ -482,6 +538,7 @@ def visualize_nds(case_id):
         #             color='blue',
         #             label='left-turn')
         # future track
+        # 未来10帧轨迹
         ax1.plot(lt_info[t:t_end, 0], lt_info[t:t_end, 1],
                  alpha=0.8,
                  color='blue')
@@ -513,4 +570,7 @@ if __name__ == '__main__':
     # analyze_nds(30)
 
     # visualize_nds(113)
-    estimate_ipv_in_nds(129)
+    time1 = time.perf_counter()
+    estimate_ipv_in_nds(0)
+    time2 = time.perf_counter()
+    print('overall time consumption: ', time2 - time1)
