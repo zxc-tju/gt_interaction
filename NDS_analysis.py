@@ -1,4 +1,5 @@
 import scipy.io
+import os
 import math
 import numpy as np
 from matplotlib import pyplot as plt
@@ -6,6 +7,7 @@ from agent import Agent
 from tools.utility import get_central_vertices, smooth_ployline, get_intersection_point, draw_rectangle
 import pandas as pd
 import time
+from tqdm import tqdm
 from datetime import datetime
 import xlsxwriter
 
@@ -252,6 +254,94 @@ def cal_pet(trj_a, trj_b, type_cal):
         return apet, ttcp_a, ttcp_b
 
 
+def visualize_nds(case_id):
+    """
+    播放给定驾驶数据片段中的车辆轨迹
+    Parameters
+    ----------
+    case_id：驾驶数据片段序号
+
+    """
+    # abstract interaction info. of a given case
+    # 提取给定序号的驾驶数据片段中的所有信息
+    case_info = inter_info[case_id]
+    # left-turn vehicle
+    # 提取左转车信息
+    lt_info = case_info[0]
+    # go-straight vehicles
+    # 提取直行车（们）的信息
+    gs_info_multi = case_info[1:inter_num[0, case_id] + 1]
+
+    fig, ax1 = plt.subplots(1, figsize=[8, 8])
+
+    # 遍历左转车存在与场景中的所有时间片刻
+    for t in range(np.size(lt_info, 0)):
+        t_end = t + 10
+        ax1.cla()
+        ax1.set(xlim=[-22, 53], ylim=[-31, 57])
+        img = plt.imread('background_pic/Jianhexianxia-v2.png')
+        ax1.imshow(img, extent=[-28, 58, -42, 64])
+        plt.text(-10, 60, 'T=' + str(t), fontsize=30)
+
+        # position of go-straight vehicles
+        # 标记直行车的位置和未来轨迹
+        for gs_id in range(np.size(gs_info_multi, 0)):
+            if np.size(gs_info_multi[gs_id], 0) > t and not gs_info_multi[gs_id][t, 0] == 0:
+                # position
+                # 当前位置
+                draw_rectangle(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
+                               gs_info_multi[gs_id][t, 4] / math.pi * 180, ax1,
+                               para_alpha=1, para_color='#7030A0')
+                # ax1.scatter(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
+                #             s=120,
+                #             alpha=0.9,
+                #             color='red',
+                #             label='go-straight')
+                # future track
+                # 未来10帧轨迹
+                t_end_gs = min(t + 10, np.size(gs_info_multi[gs_id], 0))
+                ax1.plot(gs_info_multi[gs_id][t:t_end_gs, 0], gs_info_multi[gs_id][t:t_end_gs, 1],
+                         alpha=0.8,
+                         color='red')
+
+        # position of left-turn vehicle
+        # 标记左转车的位置和未来轨迹
+
+        # position
+        # 当前位置
+        draw_rectangle(lt_info[t, 0],  lt_info[t, 1],
+                       lt_info[t, 4] / math.pi * 180, ax1,
+                       para_alpha=1, para_color='#0E76CF')
+        # ax1.scatter(lt_info[t, 0], lt_info[t, 1],
+        #             s=120,
+        #             alpha=0.9,
+        #             color='blue',
+        #             label='left-turn')
+        # future track
+        # 未来10帧轨迹
+        ax1.plot(lt_info[t:t_end, 0], lt_info[t:t_end, 1],
+                 alpha=0.8,
+                 color='blue')
+        # ax1.legend()
+        plt.pause(0.1)
+        plt.savefig('../outputs/5_gt_interaction/figures/replay case ' + str(case_id) + '/' + str(t) + '.png', dpi=300)
+
+    # # show full track of all agents
+    # ax2.plot(lt_info[:, 0], lt_info[:, 1],
+    #          alpha=0.8,
+    #          color='blue')
+    # for gs_id in range(np.size(gs_info_multi, 0)):
+    #     # find solid frames
+    #     frames = np.where(gs_info_multi[gs_id][:, 0] < 1e-3)
+    #     # the first solid frame id
+    #     frame_start = len(frames[0])
+    #     # tracks
+    #     ax2.plot(gs_info_multi[gs_id][frame_start:, 0], gs_info_multi[gs_id][frame_start:, 1],
+    #              alpha=0.8,
+    #              color='red')
+    # plt.show()
+
+
 def estimate_ipv_in_nds(case_id):
     """
     估计自然驾驶数据片段中个体的交互倾向（IPV）
@@ -474,103 +564,145 @@ def estimate_ipv_in_nds(case_id):
                 print('no results, more observation needed')
 
 
-def visualize_nds(case_id):
-    """
-    播放给定驾驶数据片段中的车辆轨迹
-    Parameters
-    ----------
-    case_id：驾驶数据片段序号
+def estimate_ipv_in_argo(case_id, save_data=False, visualization_needed=False):
+    data_path = './argoverse/ipv_estimation_argo/hv_hv_left_first/'
+    source_path = './argoverse/interaction_hv_left_first/'
 
-    """
-    # abstract interaction info. of a given case
-    # 提取给定序号的驾驶数据片段中的所有信息
-    case_info = inter_info[case_id]
-    # left-turn vehicle
-    # 提取左转车信息
-    lt_info = case_info[0]
-    # go-straight vehicles
-    # 提取直行车（们）的信息
-    gs_info_multi = case_info[1:inter_num[0, case_id] + 1]
+    if not os.path.exists(data_path):
+        os.makedirs(data_path)
+    if not os.path.exists(source_path):
+        os.makedirs(source_path)
 
-    fig, ax1 = plt.subplots(1, figsize=[8, 8])
+    file_name = data_path + str(case_id) + '_ipv_results.xlsx'
 
-    # 遍历左转车存在与场景中的所有时间片刻
-    for t in range(np.size(lt_info, 0)):
-        t_end = t + 10
-        ax1.cla()
-        ax1.set(xlim=[-22, 53], ylim=[-31, 57])
-        img = plt.imread('background_pic/Jianhexianxia-v2.png')
-        ax1.imshow(img, extent=[-28, 58, -42, 64])
-        plt.text(-10, 60, 'T=' + str(t), fontsize=30)
+    # read trajectories
+    gs_info_file = source_path + str(case_id) + '_agent_hv.csv'  # x|y|vx|vy|heading
+    lt_info_file = source_path + str(case_id) + '_ego_hv.csv'
+    gs_info = pd.read_csv(gs_info_file)
+    gs_info = gs_info[['x', 'y', 'vx', 'vy', 'heading']].values
+    # print(gs_info)
+    lt_info = pd.read_csv(lt_info_file)
+    lt_info = lt_info[['x', 'y', 'vx', 'vy', 'heading']].values
 
-        # position of go-straight vehicles
-        # 标记直行车的位置和未来轨迹
-        for gs_id in range(np.size(gs_info_multi, 0)):
-            if np.size(gs_info_multi[gs_id], 0) > t and not gs_info_multi[gs_id][t, 0] == 0:
-                # position
-                # 当前位置
-                draw_rectangle(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
-                               gs_info_multi[gs_id][t, 4] / math.pi * 180, ax1,
-                               para_alpha=1, para_color='#7030A0')
-                # ax1.scatter(gs_info_multi[gs_id][t, 0], gs_info_multi[gs_id][t, 1],
-                #             s=120,
-                #             alpha=0.9,
-                #             color='red',
-                #             label='go-straight')
-                # future track
-                # 未来10帧轨迹
-                t_end_gs = min(t + 10, np.size(gs_info_multi[gs_id], 0))
-                ax1.plot(gs_info_multi[gs_id][t:t_end_gs, 0], gs_info_multi[gs_id][t:t_end_gs, 1],
-                         alpha=0.8,
-                         color='red')
+    # read reference
+    gs_ref_file = source_path + str(case_id) + '_refline_gs_hv.csv'  # x|y
+    lt_ref_file = source_path + str(case_id) + '_refline_lt_hv.csv'
 
-        # position of left-turn vehicle
-        # 标记左转车的位置和未来轨迹
+    gs_ref = pd.read_csv(gs_ref_file)
+    gs_ref = gs_ref[['x', 'y']].values
 
-        # position
-        # 当前位置
-        draw_rectangle(lt_info[t, 0],  lt_info[t, 1],
-                       lt_info[t, 4] / math.pi * 180, ax1,
-                       para_alpha=1, para_color='#0E76CF')
-        # ax1.scatter(lt_info[t, 0], lt_info[t, 1],
-        #             s=120,
-        #             alpha=0.9,
-        #             color='blue',
-        #             label='left-turn')
-        # future track
-        # 未来10帧轨迹
-        ax1.plot(lt_info[t:t_end, 0], lt_info[t:t_end, 1],
-                 alpha=0.8,
-                 color='blue')
-        # ax1.legend()
-        plt.pause(0.1)
-        plt.savefig('../outputs/5_gt_interaction/figures/replay case ' + str(case_id) + '/' + str(t) + '.png', dpi=300)
+    lt_ref = pd.read_csv(lt_ref_file)
+    lt_ref = lt_ref[['x', 'y']].values
 
-    # # show full track of all agents
-    # ax2.plot(lt_info[:, 0], lt_info[:, 1],
-    #          alpha=0.8,
-    #          color='blue')
-    # for gs_id in range(np.size(gs_info_multi, 0)):
-    #     # find solid frames
-    #     frames = np.where(gs_info_multi[gs_id][:, 0] < 1e-3)
-    #     # the first solid frame id
-    #     frame_start = len(frames[0])
-    #     # tracks
-    #     ax2.plot(gs_info_multi[gs_id][frame_start:, 0], gs_info_multi[gs_id][frame_start:, 1],
-    #              alpha=0.8,
-    #              color='red')
-    # plt.show()
+    # IPV estimation
+    ipv_collection = np.zeros_like(lt_info[:, 0:2])
+    ipv_error_collection = np.ones_like(lt_info[:, 0:2])
+    for t in tqdm(range(6, np.size(lt_ref, 0))):
+
+        if t == 10:
+            print('debug!')
+        # for t in {8}:
+        start_time = max(0, t - 10)
+
+        init_position_lt = lt_info[start_time, 0:2]
+        init_velocity_lt = lt_info[start_time, 2:4]
+        init_heading_lt = lt_info[start_time, 4]
+        agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt_argo')
+        agent_lt.reference = lt_ref
+
+        lt_track = lt_info[start_time:t + 1, 0:2]
+
+        init_position_gs = gs_info[start_time, 0:2]
+        init_velocity_gs = gs_info[start_time, 2:4]
+        init_heading_gs = gs_info[start_time, 4]
+        agent_gs = Agent(init_position_gs, init_velocity_gs, init_heading_gs, 'gs_argo')
+        agent_gs.reference = gs_ref
+
+        gs_track = gs_info[start_time:t + 1, 0:2]
+
+        # estimate ipv
+        agent_lt.estimate_self_ipv(lt_track, gs_track)
+        ipv_collection[t, 0] = agent_lt.ipv
+        ipv_error_collection[t, 0] = agent_lt.ipv_error
+
+        agent_gs.estimate_self_ipv(gs_track, lt_track)
+        ipv_collection[t, 1] = agent_gs.ipv
+        ipv_error_collection[t, 1] = agent_gs.ipv_error
+
+    if save_data:
+        # Save data
+        # with the format of:
+        # 0-ipv_lt | ipv_lt_error | lt_px | lt_py  | lt_vx  | lt_vy  | lt_heading  |...
+        # 7-ipv_gs | ipv_gs_error | gs_px | gs_py  | gs_vx  | gs_vy  | gs_heading  |
+
+        df_ipv_lt = pd.DataFrame(ipv_collection[:, 0], columns=["ipv_lt"])
+        df_ipv_lt_error = pd.DataFrame(ipv_error_collection[:, 0], columns=["ipv_lt_error"])
+        df_motion_lt = pd.DataFrame(lt_info[:, 0:5], columns=["lt_px", "lt_py", "lt_vx", "lt_vy", "lt_heading"])
+
+        df_ipv_gs = pd.DataFrame(ipv_collection[:, 1], columns=["ipv_gs"])
+        df_ipv_gs_error = pd.DataFrame(ipv_error_collection[:, 1], columns=["ipv_gs_error"])
+        df_motion_gs = pd.DataFrame(gs_info[:, 0:5], columns=["gs_px", "gs_py", "gs_vx", "gs_vy", "gs_heading"])
+
+        with pd.ExcelWriter(file_name) as writer:
+            df_ipv_lt.to_excel(writer, startcol=0, index=False)
+            df_ipv_lt_error.to_excel(writer, startcol=1, index=False)
+            df_motion_lt.to_excel(writer, startcol=2, index=False)
+
+            df_ipv_gs.to_excel(writer, startcol=7, index=False)
+            df_ipv_gs_error.to_excel(writer, startcol=8, index=False)
+            df_motion_gs.to_excel(writer, startcol=9, index=False)
+
+    if visualization_needed:
+        # Visualize final results
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[16, 8])
+        ax1.set(ylim=[-2, 2])
+
+        x_range = range(np.size(lt_ref, 0))
+
+        smoothed_ipv_lt, _ = smooth_ployline(np.array([x_range, ipv_collection[x_range, 0]]).T)
+        smoothed_ipv_error_lt, _ = smooth_ployline(np.array([x_range, ipv_error_collection[x_range, 0]]).T)
+        smoothed_x = smoothed_ipv_lt[:, 0]
+        # plot ipv
+        ax1.plot(smoothed_x, smoothed_ipv_lt[:, 1], 'blue')
+        # plot error bar
+        ax1.fill_between(smoothed_x, smoothed_ipv_lt[:, 1] - smoothed_ipv_error_lt[:, 1],
+                         smoothed_ipv_lt[:, 1] + smoothed_ipv_error_lt[:, 1],
+                         alpha=0.4,
+                         color='blue',
+                         label='estimated lt IPV')
+
+        smoothed_ipv_gs, _ = smooth_ployline(np.array([x_range, ipv_collection[x_range, 1]]).T)
+        smoothed_ipv_error_gs, _ = smooth_ployline(np.array([x_range, ipv_error_collection[x_range, 1]]).T)
+        # plot ipv
+        ax1.plot(smoothed_x, smoothed_ipv_gs[:, 1], 'red')
+        # plot error bar
+        ax1.fill_between(smoothed_x, smoothed_ipv_gs[:, 1] - smoothed_ipv_error_gs[:, 1],
+                         smoothed_ipv_gs[:, 1] + smoothed_ipv_error_gs[:, 1],
+                         alpha=0.4,
+                         color='red',
+                         label='estimated gs IPV')
+        ax1.legend()
+
+        ax2.plot(gs_info[:, 0], gs_info[:, 1], color='red', label='GS Ground Truth')
+        ax2.plot(lt_info[:, 0], lt_info[:, 1], color='blue', label='LT Ground Truth')
+        ax2.plot(gs_ref[:, 0], gs_ref[:, 1], color='red', linestyle='--', label='GS Reference')
+        ax2.plot(lt_ref[:, 0], lt_ref[:, 1], color='blue', linestyle='--', label='LT Reference')
+        ax2.legend()
+
+        plt.show()
+        # plt.close()
 
 
 if __name__ == '__main__':
-    "calculate ipv in NDS"
-    # estimate IPV in natural driving data and write results into excels (along with all agents' motion info)
-    # for case_index in range(130):
-    #     analyze_nds(case_index)
-    # analyze_nds(30)
-
     # visualize_nds(113)
-    time1 = time.perf_counter()
-    estimate_ipv_in_nds(0)
-    time2 = time.perf_counter()
-    print('overall time consumption: ', time2 - time1)
+
+    "calculate ipv in NDS"
+    # time1 = time.perf_counter()
+    # estimate_ipv_in_nds(0)
+    # time2 = time.perf_counter()
+    # print('overall time consumption: ', time2 - time1)
+
+    "calculate ipv in Argoverse"
+    estimate_ipv_in_argo(case_id=0, save_data=False, visualization_needed=True)
+
+

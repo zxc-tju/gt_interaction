@@ -5,12 +5,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 from scipy.optimize import minimize, linprog
-from tools.utility import get_central_vertices, bicycle_model, mass_point_model, get_intersection_point, CalcRefLine
+from tools.utility import get_central_vertices, bicycle_model, mass_point_model, get_intersection_point, CalcRefLine, \
+    smooth_ployline
 from tools.Lattice import TrajPoint
 import copy
 import warnings
 from concurrent.futures import ProcessPoolExecutor
-import viztracer
+# import viztracer
 import time
 
 # simulation setting
@@ -70,8 +71,10 @@ class Agent:
         self.ipv_error_collection = []
         self.virtual_track_collection = []
         self.plan_count = 0
+        self.reference = None
 
-    def lp_ibr_interact(self, iter_limit=10, interactive=True, horizon=TRACK_LEN):
+    def lp_ibr_interact(self, iter_limit=10, interactive=True, horizon=TRACK_LEN, in_loop_draw=False,
+                        fig_path='./outputs/'):
         """
         求解线性化博弈问题
         Note that we assume:
@@ -114,16 +117,21 @@ class Agent:
         " ==== start iteration ==== "
         "Iterative Best Response方法的迭代求解"
         count_iter = 0  # count number of iteration
+        fig_id = 1
 
         # check if iteration converged
         while (np.linalg.norm(record_track_inter - last_track_inter[0]) > 1e-3) \
                 and (count_iter < iter_limit):
             count_iter += 1
 
+            # update recorded track for track comparison latter
+            record_track_inter = last_track_inter[0]
+
             # plan for subjective agent
             # 求解主车的优化问题
             new_track_self = self.solve_linear_programming(last_track_self, last_track_inter, interactive)
-            # self.in_loop_draw(last_track_self, last_track_inter, fig_id)
+            if in_loop_draw:
+                self.in_loop_draw(last_track_self, last_track_inter, fig_id, fig_path)
 
             last_track_self = new_track_self
 
@@ -133,16 +141,16 @@ class Agent:
                 new_track_inter = inter_agent. \
                     solve_linear_programming(last_track_inter[i], [last_track_self], interactive)
                 # self.estimated_inter_agent.in_loop_draw(last_track_inter, last_track_self, fig_id)
-                # fig_id += 1
+                fig_id += 1
                 last_track_inter[i] = new_track_inter
 
-            # update recorded track for track comparison latter
-            record_track_inter = last_track_inter[0]
+
 
         " ==== final plan for subjective agent ==== "
         "收敛后再次求解主车的优化问题，得到最终规划结果"
         self.solve_linear_programming(last_track_self, last_track_inter, interactive)
-        # self.in_loop_draw(last_track_self, last_track_inter)
+        if in_loop_draw:
+            self.in_loop_draw(last_track_self, last_track_inter, fig_id, fig_path)
 
     def get_opt_params(self, last_track_self, last_track_inter, interactive=True):
         """
@@ -377,7 +385,7 @@ class Agent:
         #         self.estimated_inter_agent[0].ipv_error_collection.append(error)
         #         "====end of parallel game method===="
 
-    def draw(self):
+    def draw(self, fig_path='./outputs/'):
         """
         绘制单次规划的轨迹解（从单个agent的视角绘制）
 
@@ -385,17 +393,17 @@ class Agent:
         plt.figure()
         cv_init_lt, _ = get_central_vertices('lt')
         cv_init_gs, _ = get_central_vertices('gs')
-        plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], 'b--')
-        plt.plot(cv_init_lt[:, 0], cv_init_lt[:, 1], 'r--')
+        plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], '--', color='#0070C0')  # blue
+        plt.plot(cv_init_lt[:, 0], cv_init_lt[:, 1], '--', color='#7030A0')  # purple
 
         min_dis = 999
 
         for t in range(np.size(self.trj_solution, 0)):
 
-            plt.plot(self.trj_solution[t, 0], self.trj_solution[t, 1], 'r*')
+            plt.plot(self.trj_solution[t, 0], self.trj_solution[t, 1], '*', color='#7030A0')
 
             for i, inter_agent in enumerate(self.estimated_inter_agent):
-                c = 'blue'
+                c = '#0070C0'  # blue
                 if i > 0:
                     c = 'black'
                 plt.plot(inter_agent.trj_solution[t, 0],
@@ -407,41 +415,43 @@ class Agent:
                 dis = np.linalg.norm(self.trj_solution[:, 0:2] - inter_agent.trj_solution[:, 0:2], axis=1)
                 index = np.where(dis == min(dis))
                 plt.scatter((self.trj_solution[index, 0] + inter_agent.trj_solution[index, 0]) / 2,
-                            (self.trj_solution[index, 1] + inter_agent.trj_solution[index, 1]) / 2)
+                            (self.trj_solution[index, 1] + inter_agent.trj_solution[index, 1]) / 2,
+                            color='#70AD47')  # green
                 min_dis = min(min(dis), min_dis)
         plt.axis('equal')
         plt.xlim(5, 25)
         plt.ylim(-8, 5)
-        plt.savefig('../outputs/5_gt_interaction/figures/' + 'final.png', dpi=600)
-        plt.text(16, 4, 'min distance: %.2f' % min_dis)
+        plt.savefig(fig_path + 'final.png', dpi=600)
+        # plt.text(16, 4, 'min distance: %.2f' % min_dis)
 
         # plt.title('gs ipv: ' + str(self.estimated_inter_agent.ipv) + '--lt ipv: ' + str(self.ipv))
         plt.show()
 
-    def in_loop_draw(self, last_track_self, last_track_inter, fig_id=None):
+    def in_loop_draw(self, last_track_self, last_track_inters, fig_id=None, fig_path='./outputs/'):
         plt.figure()
-        cv_init_it, _ = get_central_vertices('lt')
+        cv_init_lt, _ = get_central_vertices('lt')
         cv_init_gs, _ = get_central_vertices('gs')
-        plt.plot(cv_init_it[:, 0], cv_init_it[:, 1], 'r-', alpha=0.2)
-        plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], 'b-', alpha=0.2)
+        plt.plot(cv_init_lt[:, 0], cv_init_lt[:, 1], '-', color='#7030A0', alpha=0.2)
+        plt.plot(cv_init_gs[:, 0], cv_init_gs[:, 1], '-', color='#0070C0', alpha=0.2)
 
         if self.target == 'gs':
-            point_color_self = 'blue'
-            point_color_inter = 'red'
+            point_color_self = '#0070C0'  # blue
+            point_color_inter = '#7030A0'  # purple
         else:
-            point_color_self = 'red'
-            point_color_inter = 'blue'
+            point_color_self = '#7030A0'
+            point_color_inter = '#0070C0'
 
-        # plt.scatter(self.trj_solution[:, 0], self.trj_solution[:, 1], color=point_color_self, alpha=0.5)
-        plt.plot(last_track_self[:, 0], last_track_self[:, 1], point_color_self)
-        plt.plot(last_track_inter[:, 0], last_track_inter[:, 1], point_color_inter)
-        plt.axis('equal')
-        plt.xlim(5, 20)
-        plt.ylim(-8, 5)
+        for last_track_inter in last_track_inters:
+            # plt.scatter(self.trj_solution[:, 0], self.trj_solution[:, 1], color=point_color_self, alpha=0.5)
+            plt.plot(last_track_self[:, 0], last_track_self[:, 1], point_color_self)
+            plt.plot(last_track_inter[:, 0], last_track_inter[:, 1], point_color_inter)
+            plt.axis('equal')
+            plt.xlim(5, 20)
+            plt.ylim(-8, 5)
 
         plt.show()
         if fig_id:
-            plt.savefig('./figures/' + str(fig_id) + '.png', dpi=600)
+            plt.savefig(fig_path + str(fig_id) + '.png', dpi=600)
 
     def ibr_interact(self, iter_limit=10):
         """
@@ -468,7 +478,8 @@ class Agent:
                      self.velocity,
                      self.heading,
                      self.ipv,
-                     self.target]
+                     self.target,
+                     self.reference]
 
         # 初始状态
         p, v, h = self_info[0:3]
@@ -689,21 +700,25 @@ def get_ub_param(last_track_features, last_track_self, last_track_inter_collecti
             param_A_ub[(2 + i) * (track_len - 1) + k, range_x] -= p_temp[0] * dynamic_mat[:, k]
             param_A_ub[(2 + i) * (track_len - 1) + k, range_y] -= p_temp[1] * dynamic_mat[:, k]
             param_b_ub[(2 + i) * (track_len - 1) + k] = - min_dis * (1 - k / (track_len - 1) * aggre_factor) \
-                                                - np.dot(p_temp, last_track_inter[k, :]) \
-                                                + np.dot(p_temp, np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
+                                                        - np.dot(p_temp, last_track_inter[k, :]) \
+                                                        + np.dot(p_temp,
+                                                                 np.array([p[0] + k * v[0] * dt, p[1] + k * v[1] * dt]))
 
     return param_A_ub, param_b_ub
 
 
-def cal_individual_cost(track, target):
+def cal_individual_cost(track, target, ref=None):
     """
     计算个体行为相关的损失项
     """
 
-    if target in {'gs_nds', 'lt_nds'}:
-        cv, s = get_central_vertices(target, track[0, :])
+    if ref is None:
+        if target in {'gs_nds', 'lt_nds'}:
+            cv, s = get_central_vertices(target, track[0, :])
+        else:
+            cv, s = get_central_vertices(target, None)
     else:
-        cv, s = get_central_vertices(target, None)
+        cv, s = smooth_ployline(ref)
 
     # initialize an array to store distance from each point in the track to cv
     dis2cv = np.zeros([np.size(track, 0), 1])
@@ -867,7 +882,7 @@ def utility_fun(self_info, track_inter):
         track_info_self = bicycle_model(u, init_state_4_kine, np.size(track_inter, 0), dt)
         track_self = track_info_self[:, 0:2]
         track_all = [track_self, track_inter[:, 0:2]]
-        interior_cost = cal_individual_cost(track_self, self_info[4])
+        interior_cost = cal_individual_cost(track_self, target=self_info[4], ref=self_info[5])
         group_cost = cal_group_cost(track_all)
         util = np.cos(self_info[3]) * interior_cost + np.sin(self_info[3]) * group_cost
         # print('interior_cost:', interior_cost)
@@ -912,7 +927,7 @@ if __name__ == '__main__':
     print('track len:', TRACK_LEN)
     time_all1 = time.perf_counter()
     # 求解线性化博弈问题
-    agent_lt.lp_ibr_interact(iter_limit=50, interactive=True)
+    agent_lt.lp_ibr_interact(iter_limit=50, interactive=True, in_loop_draw=True, fig_path='./outputs/')
     time_all2 = time.perf_counter()
     print('LP overall time:', time_all2 - time_all1)
 
@@ -920,4 +935,4 @@ if __name__ == '__main__':
     # time_all3 = time.perf_counter()
     # print('non-linearized with cons overall time:', time_all3 - time_all2)
     #
-    agent_lt.draw()
+    agent_lt.draw(fig_path='./outputs/')

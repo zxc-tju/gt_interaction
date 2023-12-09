@@ -11,6 +11,15 @@ from tools.Lattice import PathPoint
 
 def smooth_ployline(cv_init, point_num=1000):
     cv = cv_init
+    if np.size(cv, 0) <= 3:
+        interpolated_cv = []
+        for n in range(np.size(cv, 0)-1):
+            for i in range(5):
+                interpolated_cv.append((2-i) / 2 * cv[n, ] +
+                                       i / 2 * cv[n+1, ])
+        cv = np.array(interpolated_cv)
+        # print(interpolated_cv)
+
     list_x = cv[:, 0]
     list_y = cv[:, 1]
     if type(cv) is not np.ndarray:
