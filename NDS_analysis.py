@@ -11,7 +11,7 @@ from tqdm import tqdm
 from datetime import datetime
 import xlsxwriter
 
-illustration_needed = False
+illustration_needed = True
 print_needed = False
 save_data_needed = False
 # load data
@@ -189,7 +189,6 @@ def cal_pet(trj_a, trj_b, type_cal):
     "find the conflict point"
     "寻找两条轨迹的冲突点"
     conflict_point_str = get_intersection_point(trj_a, trj_b)
-    conflict_point = np.array(conflict_point_str)
 
     if conflict_point_str.is_empty:  # there is no intersection between given polylines
         min_dis = 99
@@ -205,8 +204,8 @@ def cal_pet(trj_a, trj_b, type_cal):
                 min_dis2cv_index_a = min_dis2cv_index_temp[0]
                 min_dis2cv_index_b = i
         conflict_point = (trj_a[min_dis2cv_index_a[0], :] + trj_b[min_dis2cv_index_b, :]) / 2
-    if not np.size(conflict_point) == 2:
-        conflict_point = conflict_point[0, :]
+    else:
+        conflict_point = np.array([conflict_point_str.x, conflict_point_str.y])
 
     "find the point that most closed to cp in each trajectory"
     "寻找两条轨迹各自距离冲突点最近的轨迹点"
@@ -564,145 +563,14 @@ def estimate_ipv_in_nds(case_id):
                 print('no results, more observation needed')
 
 
-def estimate_ipv_in_argo(case_id, save_data=False, visualization_needed=False):
-    data_path = './argoverse/ipv_estimation_argo/hv_hv_left_first/'
-    source_path = './argoverse/interaction_hv_left_first/'
-
-    if not os.path.exists(data_path):
-        os.makedirs(data_path)
-    if not os.path.exists(source_path):
-        os.makedirs(source_path)
-
-    file_name = data_path + str(case_id) + '_ipv_results.xlsx'
-
-    # read trajectories
-    gs_info_file = source_path + str(case_id) + '_agent_hv.csv'  # x|y|vx|vy|heading
-    lt_info_file = source_path + str(case_id) + '_ego_hv.csv'
-    gs_info = pd.read_csv(gs_info_file)
-    gs_info = gs_info[['x', 'y', 'vx', 'vy', 'heading']].values
-    # print(gs_info)
-    lt_info = pd.read_csv(lt_info_file)
-    lt_info = lt_info[['x', 'y', 'vx', 'vy', 'heading']].values
-
-    # read reference
-    gs_ref_file = source_path + str(case_id) + '_refline_gs_hv.csv'  # x|y
-    lt_ref_file = source_path + str(case_id) + '_refline_lt_hv.csv'
-
-    gs_ref = pd.read_csv(gs_ref_file)
-    gs_ref = gs_ref[['x', 'y']].values
-
-    lt_ref = pd.read_csv(lt_ref_file)
-    lt_ref = lt_ref[['x', 'y']].values
-
-    # IPV estimation
-    ipv_collection = np.zeros_like(lt_info[:, 0:2])
-    ipv_error_collection = np.ones_like(lt_info[:, 0:2])
-    for t in tqdm(range(6, np.size(lt_ref, 0))):
-
-        if t == 10:
-            print('debug!')
-        # for t in {8}:
-        start_time = max(0, t - 10)
-
-        init_position_lt = lt_info[start_time, 0:2]
-        init_velocity_lt = lt_info[start_time, 2:4]
-        init_heading_lt = lt_info[start_time, 4]
-        agent_lt = Agent(init_position_lt, init_velocity_lt, init_heading_lt, 'lt_argo')
-        agent_lt.reference = lt_ref
-
-        lt_track = lt_info[start_time:t + 1, 0:2]
-
-        init_position_gs = gs_info[start_time, 0:2]
-        init_velocity_gs = gs_info[start_time, 2:4]
-        init_heading_gs = gs_info[start_time, 4]
-        agent_gs = Agent(init_position_gs, init_velocity_gs, init_heading_gs, 'gs_argo')
-        agent_gs.reference = gs_ref
-
-        gs_track = gs_info[start_time:t + 1, 0:2]
-
-        # estimate ipv
-        agent_lt.estimate_self_ipv(lt_track, gs_track)
-        ipv_collection[t, 0] = agent_lt.ipv
-        ipv_error_collection[t, 0] = agent_lt.ipv_error
-
-        agent_gs.estimate_self_ipv(gs_track, lt_track)
-        ipv_collection[t, 1] = agent_gs.ipv
-        ipv_error_collection[t, 1] = agent_gs.ipv_error
-
-    if save_data:
-        # Save data
-        # with the format of:
-        # 0-ipv_lt | ipv_lt_error | lt_px | lt_py  | lt_vx  | lt_vy  | lt_heading  |...
-        # 7-ipv_gs | ipv_gs_error | gs_px | gs_py  | gs_vx  | gs_vy  | gs_heading  |
-
-        df_ipv_lt = pd.DataFrame(ipv_collection[:, 0], columns=["ipv_lt"])
-        df_ipv_lt_error = pd.DataFrame(ipv_error_collection[:, 0], columns=["ipv_lt_error"])
-        df_motion_lt = pd.DataFrame(lt_info[:, 0:5], columns=["lt_px", "lt_py", "lt_vx", "lt_vy", "lt_heading"])
-
-        df_ipv_gs = pd.DataFrame(ipv_collection[:, 1], columns=["ipv_gs"])
-        df_ipv_gs_error = pd.DataFrame(ipv_error_collection[:, 1], columns=["ipv_gs_error"])
-        df_motion_gs = pd.DataFrame(gs_info[:, 0:5], columns=["gs_px", "gs_py", "gs_vx", "gs_vy", "gs_heading"])
-
-        with pd.ExcelWriter(file_name) as writer:
-            df_ipv_lt.to_excel(writer, startcol=0, index=False)
-            df_ipv_lt_error.to_excel(writer, startcol=1, index=False)
-            df_motion_lt.to_excel(writer, startcol=2, index=False)
-
-            df_ipv_gs.to_excel(writer, startcol=7, index=False)
-            df_ipv_gs_error.to_excel(writer, startcol=8, index=False)
-            df_motion_gs.to_excel(writer, startcol=9, index=False)
-
-    if visualization_needed:
-        # Visualize final results
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[16, 8])
-        ax1.set(ylim=[-2, 2])
-
-        x_range = range(np.size(lt_ref, 0))
-
-        smoothed_ipv_lt, _ = smooth_ployline(np.array([x_range, ipv_collection[x_range, 0]]).T)
-        smoothed_ipv_error_lt, _ = smooth_ployline(np.array([x_range, ipv_error_collection[x_range, 0]]).T)
-        smoothed_x = smoothed_ipv_lt[:, 0]
-        # plot ipv
-        ax1.plot(smoothed_x, smoothed_ipv_lt[:, 1], 'blue')
-        # plot error bar
-        ax1.fill_between(smoothed_x, smoothed_ipv_lt[:, 1] - smoothed_ipv_error_lt[:, 1],
-                         smoothed_ipv_lt[:, 1] + smoothed_ipv_error_lt[:, 1],
-                         alpha=0.4,
-                         color='blue',
-                         label='estimated lt IPV')
-
-        smoothed_ipv_gs, _ = smooth_ployline(np.array([x_range, ipv_collection[x_range, 1]]).T)
-        smoothed_ipv_error_gs, _ = smooth_ployline(np.array([x_range, ipv_error_collection[x_range, 1]]).T)
-        # plot ipv
-        ax1.plot(smoothed_x, smoothed_ipv_gs[:, 1], 'red')
-        # plot error bar
-        ax1.fill_between(smoothed_x, smoothed_ipv_gs[:, 1] - smoothed_ipv_error_gs[:, 1],
-                         smoothed_ipv_gs[:, 1] + smoothed_ipv_error_gs[:, 1],
-                         alpha=0.4,
-                         color='red',
-                         label='estimated gs IPV')
-        ax1.legend()
-
-        ax2.plot(gs_info[:, 0], gs_info[:, 1], color='red', label='GS Ground Truth')
-        ax2.plot(lt_info[:, 0], lt_info[:, 1], color='blue', label='LT Ground Truth')
-        ax2.plot(gs_ref[:, 0], gs_ref[:, 1], color='red', linestyle='--', label='GS Reference')
-        ax2.plot(lt_ref[:, 0], lt_ref[:, 1], color='blue', linestyle='--', label='LT Reference')
-        ax2.legend()
-
-        plt.show()
-        # plt.close()
-
-
 if __name__ == '__main__':
     # visualize_nds(113)
 
     "calculate ipv in NDS"
-    # time1 = time.perf_counter()
-    # estimate_ipv_in_nds(0)
-    # time2 = time.perf_counter()
-    # print('overall time consumption: ', time2 - time1)
+    time1 = time.perf_counter()
+    estimate_ipv_in_nds(0)
+    time2 = time.perf_counter()
+    print('overall time consumption: ', time2 - time1)
 
-    "calculate ipv in Argoverse"
-    estimate_ipv_in_argo(case_id=0, save_data=False, visualization_needed=True)
 
 

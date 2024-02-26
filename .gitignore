@@ -127,5 +127,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-/figures/
-/outputs/
+
+# user defined
+figures/
+outputs/
+data/ipv_estimation/*
+argoverse
+.idea

@@ -14,11 +14,23 @@ from concurrent.futures import ProcessPoolExecutor
 # import viztracer
 import time
 
-# simulation setting
-dt = 0.12
-TRACK_LEN = 10
+# # simulation setting
+# dt = 0.12
+# TRACK_LEN = 10
+# MAX_DELTA_UT = 1e-4
+# MIN_DIS = 5
+
+# argoverse1 setting
+dt = 0.1
+TRACK_LEN = 8
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 5
+
+# #
+# # simulation setting for convergence process illustration
+# dt = 0.3
+# TRACK_LEN = 15
+# MIN_DIS = 4
 
 # weights for calculate interior cost
 WEIGHT_DELAY = 0.3
@@ -412,14 +424,15 @@ class Agent:
                 plt.plot([self.trj_solution[t, 0], inter_agent.trj_solution[t, 0]],
                          [self.trj_solution[t, 1], inter_agent.trj_solution[t, 1]], alpha=0.2, color=c)
 
-                dis = np.linalg.norm(self.trj_solution[:, 0:2] - inter_agent.trj_solution[:, 0:2], axis=1)
-                index = np.where(dis == min(dis))
-                plt.scatter((self.trj_solution[index, 0] + inter_agent.trj_solution[index, 0]) / 2,
-                            (self.trj_solution[index, 1] + inter_agent.trj_solution[index, 1]) / 2,
-                            color='#70AD47')  # green
-                min_dis = min(min(dis), min_dis)
+                # find the middle point at the most closed time frame
+                # dis = np.linalg.norm(self.trj_solution[:, 0:2] - inter_agent.trj_solution[:, 0:2], axis=1)
+                # index = np.where(dis == min(dis))
+                # plt.scatter((self.trj_solution[index, 0] + inter_agent.trj_solution[index, 0]) / 2,
+                #             (self.trj_solution[index, 1] + inter_agent.trj_solution[index, 1]) / 2,
+                #             color='#70AD47')  # green
+                # min_dis = min(min(dis), min_dis)
         plt.axis('equal')
-        plt.xlim(5, 25)
+        plt.xlim(5, 20)
         plt.ylim(-8, 5)
         plt.savefig(fig_path + 'final.png', dpi=600)
         # plt.text(16, 4, 'min distance: %.2f' % min_dis)
@@ -927,7 +940,7 @@ if __name__ == '__main__':
     print('track len:', TRACK_LEN)
     time_all1 = time.perf_counter()
     # 求解线性化博弈问题
-    agent_lt.lp_ibr_interact(iter_limit=50, interactive=True, in_loop_draw=True, fig_path='./outputs/')
+    agent_lt.lp_ibr_interact(iter_limit=20, interactive=True, in_loop_draw=True, fig_path='./outputs/')
     time_all2 = time.perf_counter()
     print('LP overall time:', time_all2 - time_all1)
 
