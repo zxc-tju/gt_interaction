@@ -21,6 +21,11 @@ from time import gmtime, strftime
 import seaborn as sns
 from openpyxl import load_workbook
 
+# Set the font globally
+plt.rcParams['font.sans-serif'] = ['SimHei'] # Or any font that supports Chinese
+plt.rcParams['axes.unicode_minus'] = False # This line is needed to display minus sign properly
+
+
 sigma = 1.5
 INTERACTION_DIS = 4
 
@@ -278,7 +283,7 @@ class Simulator:
                     self.num_step = t + 1
                     break
 
-    def visualize_final_results(self, file_path):
+    def visualize_final_results(self, file_path, language='ENG'):
 
         cv_1 = []
         cv_2 = []
@@ -291,6 +296,9 @@ class Simulator:
         axes[0].set_ylabel('Y (m)')
         axes[1].set_xlabel('Time frame')
         axes[1].set_ylabel('Velocity (m/s)')
+        if language == 'CH':
+            axes[1].set_xlabel('时间')
+            axes[1].set_ylabel('速度 (m/s)')
         axes[1].set_ylim([0, 7])
 
         if self.sim_type == 'simu_left_turn':
@@ -367,6 +375,9 @@ class Simulator:
             # Create a custom legend
             labels = {'ob_lt': 'Left turn simulation', 'ob_gs': 'Go straight simulation',
                       'nds_lt': 'Left turn ground truth', 'nds_gs': 'Go straight ground truth'}
+            if language == 'CH':
+                labels = {'ob_lt': '左转仿真轨迹', 'ob_gs': '直行仿真轨迹',
+                          'nds_lt': '左转真值轨迹', 'nds_gs': '直行真值轨迹'}
             legend_patches = [patches.Patch(color=c, label=labels[l]) for l, c in
                               zip(['ob_lt', 'ob_gs', 'nds_lt', 'nds_gs'],
                                   ['#0E76CF', '#7030A0', 'blue', 'red'])]
@@ -422,18 +433,24 @@ class Simulator:
         #                  alpha=0.2)
 
         "---- show velocity ----"
+        labels = {'ob_lt': 'Left turn simulation', 'ob_gs': 'Go straight simulation',
+                  'nds_lt': 'Left turn ground truth', 'nds_gs': 'Go straight ground truth'}
+        if language == 'CH':
+            labels = {'ob_lt': '左转仿真', 'ob_gs': '直行仿真',
+                      'nds_lt': '左转真值', 'nds_gs': '直行真值'}
+
         x_range = np.array(range(np.size(self.agent_lt.observed_trajectory, 0)))
         axes[1].plot(x_range, vel_ob_vel_norm_lt, linestyle='--',
-                     color='#0E76CF', label='Left turn simulation')
+                     color='#0E76CF', label=labels['ob_lt'])
         axes[1].plot(x_range, vel_ob_vel_norm_gs, linestyle='--',
-                     color='#7030A0', label='Go straight simulation')
+                     color='#7030A0', label=labels['ob_gs'])
 
         if self.sim_type == 'nds':
             x_range_nds = self.simu_time + x_range
             axes[1].plot(x_range, vel_nds_vel_norm_lt[x_range_nds],
-                         color='blue', label='Left turn ground truth')
+                         color='#0E76CF', label=labels['nds_lt'])
             axes[1].plot(x_range, vel_nds_vel_norm_gs[x_range_nds],
-                         color='red', label='Go straight ground truth')
+                         color='#7030A0', label=labels['nds_gs'])
 
         axes[1].legend()
         # axes[0].legend()
@@ -1942,8 +1959,8 @@ def main_simulate_nds():
 
     num_failed = 0
 
-    for case_id in range(130):
-    # for case_id in {51}:
+    # for case_id in range(130):
+    for case_id in {51}:
 
         if case_id in {39, 45, 78, 93, 99}:  # interactions finished at the beginning
             num_failed += 1
@@ -2024,8 +2041,8 @@ def main_simulate_nds():
                     #     df.to_excel(writer, header=True, index=False, sheet_name='Sheet1', startcol=8)
 
                     # ----print final trajectory at given path
-                    # ----打印最终交互结果
-                    # simu.visualize_final_results(file_path=fig_path)
+                    # ----打印最终交互结果H
+                    simu.visualize_final_results(file_path=fig_path, language='CH')
 
                     # ----get semantic interaction result
                     # ----获取语义交互结果（抢行or让行）
