@@ -15,16 +15,16 @@ from concurrent.futures import ProcessPoolExecutor
 import time
 
 # # simulation setting
-# dt = 0.12
-# TRACK_LEN = 10
-# MAX_DELTA_UT = 1e-4
-# MIN_DIS = 5
-
-# argoverse1 setting
-dt = 0.1
-TRACK_LEN = 8
+dt = 0.12
+TRACK_LEN = 10
 MAX_DELTA_UT = 1e-4
 MIN_DIS = 5
+
+# argoverse1 setting
+# dt = 0.1
+# TRACK_LEN = 8
+# MAX_DELTA_UT = 1e-4
+# MIN_DIS = 5
 
 # #
 # # simulation setting for convergence process illustration
@@ -267,7 +267,9 @@ class Agent:
         "find the conflict point"
         "寻找主车与交互对象的参考轨迹冲突点"
         conflict_point_str = get_intersection_point(cv, cv_inter)
-        conflict_point = np.array(conflict_point_str)
+        conflict_point = np.array([conflict_point_str.x, conflict_point_str.y])
+        # conflict_point = conflict_point_str
+        # conflict_point = np.array(conflict_point_str)
         if conflict_point_str.is_empty:  # there is no intersection between given polylines
             min_dis = 99
             min_dis2cv_index_a = None

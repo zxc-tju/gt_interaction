@@ -457,7 +457,7 @@ class Simulator:
         # axes[0].axis('equal')
         plt.show()
         plt.savefig(file_path + self.tag + '-final.png', dpi=600)
-        # plt.savefig(file_path + self.tag + '-final.svg')
+        plt.savefig(file_path + self.tag + '-final.svg')
         # plt.close()
 
     def visualize_single_step(self, file_path):
@@ -1311,8 +1311,8 @@ class Simulator:
         book = load_workbook(file_name)
         # # write data
         with pd.ExcelWriter(file_name, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
-            writer.book = book
-            writer.sheets = {ws.title: ws for ws in book.worksheets}
+            # writer.book = book
+            # writer.sheets = {ws.title: ws for ws in book.worksheets}
 
             df_simu_lt.to_excel(writer, header=True, index=False,
                                 sheet_name='simulation LT Trajectory',
@@ -1346,7 +1346,7 @@ class Simulator:
                                   sheet_name='Simulation GS velocity',
                                   startcol=case_id - num_failed)
 
-            writer.save()
+            # writer.save()
 
     def save_conv_meta(self, trajectory_collection, ipv_estimation_collection, file_name, draw=False):
         """
@@ -1943,7 +1943,7 @@ def main_simulate_nds():
             'replay'为直接回放原始轨迹数据，当进行涉及自然驾驶数据的仿真时，需在agent.py中设置dt = 0.12，以保证规划时间间隔与自然驾驶数据一致
        """
 
-    model_type = 'idm'
+    model_type = 'gt'
     target = 'simu'  # 仅用于记录仿真目的，不影响程序运行
 
     # 仿真结果输出路径
