@@ -356,21 +356,26 @@ class Simulator:
 
         # ----position at each time step
         # version 1
-        for t in range(num_frame):
+        # nds ground truth
+        if self.sim_type == 'nds':
+            axes[0].plot(lt_nds_trj[:, 0], lt_nds_trj[:, 1], '#0E76CF', linewidth=2)
+            axes[0].plot(gs_nds_trj[:, 0], gs_nds_trj[:, 1], '#7030A0', linewidth=2)
+
+        for t in range(0, num_frame, 1):
+
+            # nds ground truth
+            # if self.sim_type == 'nds':
+                # draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
+                #                para_alpha=0.3, para_color='black')
+                #
+                # draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
+                #                para_alpha=0.3, para_color='red')
 
             # simulation results
             draw_rectangle(lt_ob_trj[t, 0], lt_ob_trj[t, 1], lt_ob_heading[t], axes[0],
                            para_alpha=0.3, para_color='#0E76CF')
             draw_rectangle(gs_ob_trj[t, 0], gs_ob_trj[t, 1], gs_ob_heading[t], axes[0],
                            para_alpha=0.3, para_color='#7030A0')
-            #
-            # nds ground truth
-            if self.sim_type == 'nds':
-                draw_rectangle(lt_nds_trj[t, 0], lt_nds_trj[t, 1], lt_nds_heading[t], axes[0],
-                               para_alpha=0.3, para_color='blue')
-
-                draw_rectangle(gs_nds_trj[t, 0], gs_nds_trj[t, 1], gs_nds_heading[t], axes[0],
-                               para_alpha=0.3, para_color='red')
 
             # Create a custom legend
             labels = {'ob_lt': 'Left turn simulation', 'ob_gs': 'Go straight simulation',
