@@ -119,6 +119,7 @@ class Simulator:
                 self.agent_lt.lp_ibr_interact(iter_limit=iter_limit, interactive=interactive)
                 # time2 = time.perf_counter()
                 # print('time consumption per step: ', time2 - time1)
+                # self.time_consumption_per_step.append((time2 - time1))
 
             elif self.agent_lt.conl_type in {'gt', 'opt'}:
 
@@ -129,7 +130,10 @@ class Simulator:
                 if self.agent_lt.conl_type == 'opt':
                     iter_limit_lt = 0
                 # ==interaction with estimated agent
+                # time1 = time.perf_counter()
                 self.agent_lt.ibr_interact(iter_limit=iter_limit_lt)
+                # time2 = time.perf_counter()
+                # self.time_consumption_per_step.append((time2 - time1))
 
             elif self.agent_lt.conl_type in {'idm'}:
                 self.agent_lt.idm_plan(self.agent_gs)
@@ -187,7 +191,10 @@ class Simulator:
                 if self.agent_gs.conl_type == 'opt':
                     iter_limit_gs = 0
                 # ==interaction with estimated agent
+                # time1 = time.perf_counter()
                 self.agent_gs.ibr_interact(iter_limit=iter_limit_gs)
+                # time2 = time.perf_counter()
+                # self.time_consumption_per_step.append((time2 - time1))
 
             elif self.agent_gs.conl_type in {'idm'}:
                 self.agent_gs.idm_plan(self.agent_lt)
@@ -1233,6 +1240,9 @@ class Simulator:
         # 26
         max_jerk_nds_gs = max(max(jerk_nds_gs), -min(jerk_nds_gs))
 
+        # 27 time consumption
+        ave_time_consumption = np.mean(self.time_consumption_per_step)
+
         "---- sava data ----"
         # prepare data
         df = pd.DataFrame([[case_id, seman_right, seman_res_simu,
@@ -1247,7 +1257,7 @@ class Simulator:
                             max_acc_simu_lt, max_acc_simu_gs,
                             max_acc_nds_lt, max_acc_nds_gs,
                             max_jerk_simu_lt, max_jerk_simu_gs,
-                            max_jerk_nds_lt, max_jerk_nds_gs
+                            max_jerk_nds_lt, max_jerk_nds_gs, ave_time_consumption
                             ], ],
                           columns=['case id', 'semantic', ' result',
                                    'simu. v. lt', 'nds v. lt',
@@ -1261,7 +1271,7 @@ class Simulator:
                                    'MAX acc. SIMU lt', 'MAX acc. SIMU gs',
                                    'MAX acc. NDS lt', 'MAX acc. NDS gs',
                                    'MAX jerk SIMU lt', 'MAX jerk SIMU gs',
-                                   'MAX jerk NDS lt', 'MAX jerk NDS gs',
+                                   'MAX jerk NDS lt', 'MAX jerk NDS gs', 'ave_time_consumption',
                                    ])
 
         # write data
@@ -1756,6 +1766,27 @@ def run_interaction(case_id, task_id, t, lt_ipv, gs_ipv, returns, con_type='line
 
 
 def run_interaction_multi(case_id, task_id, t, lt_ipv, gs_ipv, gs_id, returns):
+    """
+    Run a single interaction simulation for a multi-task process.
+
+    Parameters:
+    case_id (int): The scenario ID.
+    task_id (int): The task ID.
+    t (float): The simulation start time.
+    lt_ipv (float): The interaction parameter value for the left-turning vehicle.
+    gs_ipv (float): The interaction parameter value for the going-straight vehicle.
+    gs_id (int): The ID of the going-straight vehicle.
+    returns (dict): A dictionary to store simulation results.
+
+    Returns:
+    dict: The updated dictionary containing simulation results.
+
+    This function performs the following steps:
+    1. Initialize the simulator.
+    2. Set simulation parameters.
+    3. Run a single-step interaction simulation.
+    4. Store the simulation results in the returns dictionary.
+    """
     simu = Simulator(case_id=case_id)
     simu.sim_type = 'nds'
     controller_type_lt = 'linear-gt'
@@ -1948,7 +1979,8 @@ def main_simulate_nds():
             'replay'为直接回放原始轨迹数据，当进行涉及自然驾驶数据的仿真时，需在agent.py中设置dt = 0.12，以保证规划时间间隔与自然驾驶数据一致
        """
 
-    model_type = 'gt'
+    model_type = 'linear-gt'
+    print('model type:', model_type)
     target = 'simu'  # 仅用于记录仿真目的，不影响程序运行
 
     # 仿真结果输出路径
@@ -1957,9 +1989,13 @@ def main_simulate_nds():
     if not os.path.exists(data_path):
         os.makedirs(data_path)
 
-    start_time = strftime("%Y-%m-%d-%H", gmtime())
+    start_time = strftime("%Y-%m-%d-%H-%M", gmtime())
     file_name = data_path + 'simulation_detail-' + start_time + '.xlsx'
     workbook = xlsxwriter.Workbook(file_name)
+    workbook.close()
+
+    file_name_meta = data_path + 'simulation_meta-' + start_time + '.xlsx'
+    workbook = xlsxwriter.Workbook(file_name_meta)
     workbook.close()
 
     num_failed = 0
@@ -2019,6 +2055,7 @@ def main_simulate_nds():
                     "开始交互仿真"
                     # time1 = time.perf_counter()
                     simu.interact(simu_step=int(simu.case_len),
+                                  iter_limit=5,
                                   make_video=False,
                                   break_when_finish=False,
                                   file_path=fig_path,
@@ -2046,26 +2083,30 @@ def main_simulate_nds():
                     #     df.to_excel(writer, header=True, index=False, sheet_name='Sheet1', startcol=8)
 
                     # ----print final trajectory at given path
-                    # ----打印最终交互结果H
+                    # ----打印最终交互结果
                     simu.visualize_final_results(file_path=fig_path, language='CH')
 
                     # ----get semantic interaction result
                     # ----获取语义交互结果（抢行or让行）
-                    # simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
-                    #                                            simu.agent_gs.observed_trajectory[:, 0:2],
-                    #                                            case_type='nds')
+                    simu.semantic_result = get_semantic_result(simu.agent_lt.observed_trajectory[:, 0:2],
+                                                               simu.agent_gs.observed_trajectory[:, 0:2],
+                                                               case_type='nds')
 
                     # ----save meta info of each interaction simulation
                     # ----保存交互事件的特征量
-                    # simu.save_simu_meta(num_failed, file_name=fig_path + 'simulation_meta_data.xlsx',
-                    #                     sheet_name=model_type + ' simulation')
+                    simu.save_simu_meta(num_failed, file_name=file_name_meta,
+                                        sheet_name=model_type + ' simulation')
 
-                    # ----save detailed trajectory of each simulation
-                    # ----保存交互轨迹
-                    simu.save_simu_details(num_failed, file_name=file_name)
+                    # # ----save detailed trajectory of each simulation
+                    # # ----保存交互轨迹
+                    # simu.save_simu_details(num_failed, file_name=file_name)
 
                 except IndexError:
-                    print('# ====Failed:' + tag + '==== #')
+                    print('# ====Failed (index):' + tag + '==== #')
+                    num_failed += 1
+                    continue
+                except ValueError:
+                    print('# ====Failed (value):' + tag + '==== #')
                     num_failed += 1
                     continue
             else:
@@ -2097,7 +2138,7 @@ def main_analyze_interaction_strength_v1():
                          91, 92, 94, 96, 97, 98, 100}:  # no path-crossing event
             num_failed += 1
             continue
-        elif case_id in {7, 23, 53, 54, 55, 79, 112, 114, 115, 116, 129}:  # influenced by non-moter road users
+        elif case_id in {7, 23, 53, 54, 55, 79, 112, 114, 115, 116, 129}:  # influenced by non-motor road users
             num_failed += 1
             continue
         else:

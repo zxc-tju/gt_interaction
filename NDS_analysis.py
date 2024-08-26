@@ -233,8 +233,8 @@ def cal_pet(trj_a, trj_b, type_cal):
     dis2conf_a = -(longi_progress_a - smoothed_progress_a[cp_index_a])
     dis2conf_b = -(longi_progress_b - smoothed_progress_b[cp_index_b])
 
-    ttcp_a = dis2conf_a[:-1] / vel_a  # ttcp:time to conflict point
-    ttcp_b = dis2conf_b[:-1] / vel_b
+    ttcp_a = dis2conf_a[:-1] / (vel_a + 1e-6)  # ttcp:time to conflict point
+    ttcp_b = dis2conf_b[:-1] / (vel_b + 1e-6)
 
     solid_len = min(np.size(ttcp_a[ttcp_a > 0], 0), np.size(ttcp_b[ttcp_b > 0], 0))
     if solid_len == 0:
