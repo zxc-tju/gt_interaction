@@ -134,3 +134,13 @@ outputs/
 data/ipv_estimation/*
 argoverse
 .idea
+.pyc
+# 忽略data目录下的所有文件
+data/*
+tj_campus/ros_data/*
+
+# 忽略.idea目录
+.idea/
+
+# 忽略__pycache__目录
+__pycache__/
